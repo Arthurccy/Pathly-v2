@@ -1,0 +1,2393 @@
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { 
+  Transaction, 
+  Category, 
+  BankAccount,
+  BalanceSnapshot,
+  Budget,
+  SavingsGoal, 
+  Debt,
+  DebtPayment,
+  BudgetContextType,
+  FinancialSummary,
+  CashFlow,
+  RecurringPattern,
+  CalendarEvent,
+  ExportOptions,
+  SimulatedEvent,
+  HouseholdConfig,
+  PhysicalAsset,
+  RealEstatePlan,
+  InvestmentPosition
+} from '../types';
+import { useAuth } from './AuthContext';
+import { supabaseService } from '../services/supabaseService';
+import { supabase } from '../lib/supabase';
+import { db } from '../services/database';
+import { getCustomMonthEnd, getCustomMonthStart } from '../utils/dateUtils';
+import { 
+  startOfMonth, 
+  endOfMonth, 
+  addMonths, 
+  eachDayOfInterval,
+  format,
+  isSameMonth,
+  addDays,
+  addWeeks,
+  addYears,
+  isBefore,
+  isAfter,
+  isSameDay,
+  startOfDay
+} from 'date-fns';
+
+const BudgetContext = createContext<BudgetContextType | undefined>(undefined);
+
+export const useBudget = () => {
+  const context = useContext(BudgetContext);
+  if (!context) {
+    throw new Error('useBudget must be used within a BudgetProvider');
+  }
+  return context;
+};
+
+const defaultCategories: Omit<Category, 'id' | 'userId'>[] = [
+  // Income categories
+  { name: 'Salaire', icon: 'Banknote', color: '#059669', type: 'income', order: 1, isActive: true },
+  { name: 'Freelance', icon: 'Briefcase', color: '#0891B2', type: 'income', order: 2, isActive: true },
+  { name: 'Investissements', icon: 'TrendingUp', color: '#7C3AED', type: 'income', order: 3, isActive: true },
+  { name: 'Autres revenus', icon: 'Plus', color: '#059669', type: 'income', order: 4, isActive: true },
+  
+  // Expense categories
+  { name: 'Logement', icon: 'Home', color: '#3B82F6', type: 'expense', order: 1, isActive: true },
+  { name: 'Alimentation', icon: 'ShoppingCart', color: '#10B981', type: 'expense', order: 2, isActive: true },
+  { name: 'Transport', icon: 'Car', color: '#F59E0B', type: 'expense', order: 3, isActive: true },
+  { name: 'Loisirs', icon: 'Gamepad2', color: '#8B5CF6', type: 'expense', order: 4, isActive: true },
+  { name: 'Santé', icon: 'Heart', color: '#EF4444', type: 'expense', order: 5, isActive: true },
+  { name: 'Vêtements', icon: 'Shirt', color: '#EC4899', type: 'expense', order: 6, isActive: true },
+  { name: 'Éducation', icon: 'GraduationCap', color: '#6366F1', type: 'expense', order: 7, isActive: true },
+  { name: 'Assurances', icon: 'Shield', color: '#64748B', type: 'expense', order: 8, isActive: true },
+  { name: 'Impôts', icon: 'Receipt', color: '#DC2626', type: 'expense', order: 9, isActive: true },
+  { name: 'Autres dépenses', icon: 'MoreHorizontal', color: '#6B7280', type: 'expense', order: 10, isActive: true },
+  
+  // Savings categories
+  { name: 'Épargne urgence', icon: 'Shield', color: '#059669', type: 'savings', order: 1, isActive: true },
+  { name: 'Épargne projet', icon: 'Target', color: '#0891B2', type: 'savings', order: 2, isActive: true },
+  { name: 'Investissements', icon: 'TrendingUp', color: '#7C3AED', type: 'savings', order: 3, isActive: true },
+  { name: 'Retraite', icon: 'Clock', color: '#059669', type: 'savings', order: 4, isActive: true },
+
+  // Bill categories
+  { name: 'Électricité', icon: 'Lightbulb', color: '#F59E0B', type: 'bill', order: 1, isActive: true },
+  { name: 'Internet', icon: 'Wifi', color: '#3B82F6', type: 'bill', order: 2, isActive: true },
+  { name: 'Téléphone', icon: 'Phone', color: '#10B981', type: 'bill', order: 3, isActive: true },
+  { name: 'Assurance', icon: 'Shield', color: '#8B5CF6', type: 'bill', order: 4, isActive: true },
+];
+
+const defaultAccounts: Omit<BankAccount, 'id' | 'userId'>[] = [];
+
+const dedupeCategories = (items: Category[]): Category[] => {
+  const seen = new Set<string>();
+  return items.filter(item => {
+    const key = `${item.type}:${item.name.trim().toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const dedupeAccounts = (items: BankAccount[]): BankAccount[] => {
+  const seen = new Set<string>();
+  return items.filter(item => {
+    const key = `${item.type}:${item.name.trim().toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const getAccountBalanceImpact = (transaction: Pick<Transaction, 'type' | 'amount' | 'description'>) => {
+  if (transaction.type === 'income' || transaction.type === 'refund' || transaction.type === 'savings_withdrawal') {
+    return transaction.amount;
+  }
+
+  if (transaction.type === 'transfer') {
+    return transaction.description.toLowerCase().includes('depuis')
+      ? transaction.amount
+      : -transaction.amount;
+  }
+
+  return -transaction.amount;
+};
+
+const normalizeCategoryRefs = (
+  categoryItems: Category[],
+  transactionItems: Transaction[],
+  budgetItems: Budget[]
+) => {
+  const canonicalByKey = new Map<string, string>();
+  const idToCanonical = new Map<string, string>();
+
+  for (const category of categoryItems) {
+    const key = `${category.type}:${category.name.trim().toLowerCase()}`;
+    const canonicalId = canonicalByKey.get(key) || category.id;
+    canonicalByKey.set(key, canonicalId);
+    idToCanonical.set(category.id, canonicalId);
+  }
+
+  return {
+    categories: dedupeCategories(categoryItems),
+    transactions: transactionItems.map(transaction => ({
+      ...transaction,
+      categoryId: idToCanonical.get(transaction.categoryId) || transaction.categoryId,
+    })),
+    budgets: budgetItems.map(budget => ({
+      ...budget,
+      categoryId: idToCanonical.get(budget.categoryId) || budget.categoryId,
+    })),
+  };
+};
+
+interface BudgetProviderProps {
+  children: ReactNode;
+}
+
+export const BudgetProvider: React.FC<BudgetProviderProps> = ({ children }) => {
+  const { user } = useAuth();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const accountsRef = useRef<BankAccount[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [debtPayments, setDebtPayments] = useState<DebtPayment[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState<'pending' | 'completed' | 'error'>('pending');
+  const loadRequestId = useRef(0);
+  
+  // Filters
+  const [currentPeriod, setCurrentPeriod] = useState({
+    start: startOfMonth(new Date()),
+    end: endOfMonth(new Date())
+  });
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+
+  // Simulated Future Events (shared across BudgetSimulator & WealthSimulator, persisted to Supabase)
+  const [simulatedEvents, setSimulatedEventsState] = useState<SimulatedEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem('pathly_simulated_events');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Sync simulated events from user_metadata when user logs in or profile updates
+  useEffect(() => {
+    if (user?.user_metadata?.pathly_simulated_events) {
+      const dbEvents = user.user_metadata.pathly_simulated_events;
+      if (Array.isArray(dbEvents)) {
+        setSimulatedEventsState(dbEvents);
+        try {
+          localStorage.setItem('pathly_simulated_events', JSON.stringify(dbEvents));
+        } catch {}
+      }
+    }
+  }, [user?.id, user?.user_metadata?.pathly_simulated_events]);
+
+  const setSimulatedEvents = async (newEvents: SimulatedEvent[]) => {
+    setSimulatedEventsState(newEvents);
+    try {
+      localStorage.setItem('pathly_simulated_events', JSON.stringify(newEvents));
+    } catch (e) {
+      console.error('Failed to save simulated events to localStorage:', e);
+    }
+
+    if (user) {
+      try {
+        const { error } = await supabase.auth.updateUser({
+          data: { pathly_simulated_events: newEvents }
+        });
+        if (error) {
+          console.error('❌ Error saving simulated events to Supabase user_metadata:', error);
+        } else {
+          console.log('✅ Simulated events persisted to Supabase database!');
+        }
+      } catch (err) {
+        console.error('❌ Failed to update Supabase user_metadata:', err);
+      }
+    }
+  };
+
+  // Household / Couple Management (shared expenses, prorata, settlement)
+  const [householdConfig, setHouseholdConfigState] = useState<HouseholdConfig>(() => {
+    try {
+      const saved = localStorage.getItem('pathly_household_config');
+      return saved ? JSON.parse(saved) : {
+        enabled: true,
+        userA: { name: 'Moi', income: 2173 },
+        userB: { name: 'Conjoint(e)', income: 1639 },
+        splitMode: 'prorata',
+        customRatioA: 57,
+        sharedCategoryIds: [],
+      };
+    } catch {
+      return {
+        enabled: true,
+        userA: { name: 'Moi', income: 2173 },
+        userB: { name: 'Conjoint(e)', income: 1639 },
+        splitMode: 'prorata',
+        customRatioA: 57,
+        sharedCategoryIds: [],
+      };
+    }
+  });
+
+  useEffect(() => {
+    if (user?.user_metadata?.pathly_household_config) {
+      const dbCfg = user.user_metadata.pathly_household_config;
+      setHouseholdConfigState(prev => ({
+        ...prev,
+        ...dbCfg,
+        sharedCategoryIds: dbCfg.sharedCategoryIds ?? prev.sharedCategoryIds ?? []
+      }));
+      try {
+        localStorage.setItem('pathly_household_config', JSON.stringify(dbCfg));
+      } catch {}
+    }
+  }, [user?.id, user?.user_metadata?.pathly_household_config]);
+
+  const updateHouseholdConfig = async (config: Partial<HouseholdConfig>) => {
+    const updated = { ...householdConfig, ...config };
+    setHouseholdConfigState(updated);
+    try {
+      localStorage.setItem('pathly_household_config', JSON.stringify(updated));
+    } catch (e) {
+      console.error('Failed to save household config to localStorage:', e);
+    }
+
+    if (user) {
+      try {
+        await supabase.auth.updateUser({
+          data: { pathly_household_config: updated }
+        });
+      } catch (err) {
+        console.error('❌ Failed to update household config in Supabase:', err);
+      }
+    }
+  };
+
+  const totalHouseholdIncome = (householdConfig.userA?.income || 0) + (householdConfig.userB?.income || 0);
+  const ratioA = householdConfig.splitMode === '50_50'
+    ? 50
+    : householdConfig.splitMode === 'custom' && householdConfig.customRatioA
+      ? householdConfig.customRatioA
+      : totalHouseholdIncome > 0
+        ? Math.round((householdConfig.userA.income / totalHouseholdIncome) * 100)
+        : 50;
+  const ratioB = 100 - ratioA;
+
+  // Auto-initialize sharedCategoryIds if not set yet
+  const hasInitializedSharedCategories = useRef(false);
+  useEffect(() => {
+    if (categories.length > 0 && !hasInitializedSharedCategories.current && (!householdConfig.sharedCategoryIds || householdConfig.sharedCategoryIds.length === 0)) {
+      const saved = localStorage.getItem('pathly_household_config');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed.sharedCategoryIds) && parsed.sharedCategoryIds.length > 0) {
+            hasInitializedSharedCategories.current = true;
+            return;
+          }
+        } catch {}
+      }
+      hasInitializedSharedCategories.current = true;
+      const defaultShared = categories
+        .filter(c => {
+          if (c.type !== 'expense' && c.type !== 'bill') return false;
+          const n = c.name.toLowerCase();
+          return (
+            c.type === 'bill' ||
+            n.includes('logement') ||
+            n.includes('aliment') ||
+            n.includes('course') ||
+            n.includes('electr') ||
+            n.includes('internet') ||
+            n.includes('loyer')
+          );
+        })
+        .map(c => c.id);
+
+      if (defaultShared.length > 0) {
+        updateHouseholdConfig({ sharedCategoryIds: defaultShared });
+      }
+    }
+  }, [categories]);
+
+  const isTransactionShared = (transaction: Transaction): boolean => {
+    if (transaction.type !== 'expense' && transaction.type !== 'bill') return false;
+    // Explicit overrides
+    if (transaction.isShared === true || transaction.tags?.includes('shared')) return true;
+    if (transaction.isShared === false || transaction.tags?.includes('excluded_shared')) return false;
+    // Common budgets / categories
+    const sharedIds = householdConfig.sharedCategoryIds || [];
+    return sharedIds.includes(transaction.categoryId);
+  };
+
+  const toggleCategoryShared = async (categoryId: string) => {
+    const current = householdConfig.sharedCategoryIds || [];
+    const exists = current.includes(categoryId);
+    const updated = exists 
+      ? current.filter(id => id !== categoryId) 
+      : [...current, categoryId];
+    await updateHouseholdConfig({ sharedCategoryIds: updated });
+  };
+
+  const toggleTransactionShared = async (id: string) => {
+    const tx = transactions.find(t => t.id === id);
+    if (!tx) return;
+    const currentlyShared = isTransactionShared(tx);
+    const newShared = !currentlyShared;
+    await updateTransaction(id, {
+      isShared: newShared,
+      tags: Array.from(new Set([
+        ...(tx.tags || []).filter(t => t !== 'shared' && t !== 'excluded_shared'),
+        ...(newShared ? ['shared'] : ['excluded_shared'])
+      ]))
+    });
+  };
+
+  // Physical Assets / Patrimoine matériel (immobilier, véhicules, montres...)
+  const [assets, setAssets] = useState<PhysicalAsset[]>(() => {
+    try {
+      const saved = localStorage.getItem('pathly_physical_assets');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (user?.user_metadata?.pathly_physical_assets) {
+      const dbAssets = user.user_metadata.pathly_physical_assets;
+      setAssets(dbAssets);
+      try {
+        localStorage.setItem('pathly_physical_assets', JSON.stringify(dbAssets));
+      } catch {}
+    }
+  }, [user?.id, user?.user_metadata?.pathly_physical_assets]);
+
+  const saveAssets = async (newAssets: PhysicalAsset[]) => {
+    setAssets(newAssets);
+    try {
+      localStorage.setItem('pathly_physical_assets', JSON.stringify(newAssets));
+    } catch (e) {
+      console.error('Failed to save assets to localStorage:', e);
+    }
+    if (user) {
+      try {
+        await supabase.auth.updateUser({
+          data: { pathly_physical_assets: newAssets }
+        });
+      } catch (err) {
+        console.error('Failed to save assets to Supabase:', err);
+      }
+    }
+  };
+
+  const addAsset = async (assetData: Omit<PhysicalAsset, 'id'>): Promise<PhysicalAsset> => {
+    const newAsset: PhysicalAsset = {
+      ...assetData,
+      id: `asset-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      userId: user?.id,
+    };
+    await saveAssets([newAsset, ...assets]);
+    return newAsset;
+  };
+
+  const updateAsset = async (id: string, updates: Partial<PhysicalAsset>) => {
+    const updated = assets.map(a => a.id === id ? { ...a, ...updates } : a);
+    await saveAssets(updated);
+  };
+
+  const deleteAsset = async (id: string) => {
+    const filtered = assets.filter(a => a.id !== id);
+    await saveAssets(filtered);
+  };
+
+  const totalAssetsValue = assets.reduce((sum, a) => sum + (Number(a.currentValue) || 0), 0);
+
+  // --- REAL ESTATE PLANS PERSISTENCE (Supabase + localStorage) ---
+  const [realEstatePlans, setRealEstatePlansState] = useState<RealEstatePlan[]>(() => {
+    try {
+      const saved = localStorage.getItem('pathly_real_estate_plans');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (user?.user_metadata?.pathly_real_estate_plans) {
+      const dbPlans = user.user_metadata.pathly_real_estate_plans;
+      if (Array.isArray(dbPlans)) {
+        setRealEstatePlansState(dbPlans);
+        try {
+          localStorage.setItem('pathly_real_estate_plans', JSON.stringify(dbPlans));
+        } catch {}
+      }
+    }
+  }, [user?.id, user?.user_metadata?.pathly_real_estate_plans]);
+
+  const saveRealEstatePlansTimeout = useRef<NodeJS.Timeout | null>(null);
+  const saveRealEstatePlans = async (newPlans: RealEstatePlan[]) => {
+    setRealEstatePlansState(newPlans);
+    try {
+      localStorage.setItem('pathly_real_estate_plans', JSON.stringify(newPlans));
+    } catch (e) {
+      console.error('Failed to save real estate plans to localStorage:', e);
+    }
+    if (user) {
+      if (saveRealEstatePlansTimeout.current) {
+        clearTimeout(saveRealEstatePlansTimeout.current);
+      }
+      saveRealEstatePlansTimeout.current = setTimeout(async () => {
+        try {
+          await supabase.auth.updateUser({
+            data: { pathly_real_estate_plans: newPlans }
+          });
+        } catch (err) {
+          console.error('Failed to save real estate plans to Supabase:', err);
+        }
+      }, 500);
+    }
+  };
+
+  // --- INVESTMENT POSITIONS / BOURSE (PEA / CTO) ---
+  const [investmentPositions, setInvestmentPositionsState] = useState<InvestmentPosition[]>(() => {
+    try {
+      const saved = localStorage.getItem('pathly_investment_positions');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const investmentPositionsRef = useRef<InvestmentPosition[]>(investmentPositions);
+  useEffect(() => {
+    investmentPositionsRef.current = investmentPositions;
+  }, [investmentPositions]);
+
+  const isLocalPositionsDirtyRef = useRef(false);
+
+  // Sync from Supabase user_metadata only on mount or if no local dirty writes in flight
+  useEffect(() => {
+    if (isLocalPositionsDirtyRef.current) return;
+    if (user?.user_metadata?.pathly_investment_positions) {
+      const dbPositions = user.user_metadata.pathly_investment_positions;
+      if (Array.isArray(dbPositions)) {
+        investmentPositionsRef.current = dbPositions;
+        setInvestmentPositionsState(dbPositions);
+        try {
+          localStorage.setItem('pathly_investment_positions', JSON.stringify(dbPositions));
+        } catch {}
+      }
+    }
+  }, [user?.id, user?.user_metadata?.pathly_investment_positions]);
+
+  const saveInvestmentPositions = async (newPositions: InvestmentPosition[]) => {
+    investmentPositionsRef.current = newPositions;
+    setInvestmentPositionsState(newPositions);
+    try {
+      localStorage.setItem('pathly_investment_positions', JSON.stringify(newPositions));
+    } catch (e) {
+      console.error('Failed to save investment positions to localStorage:', e);
+    }
+    if (user) {
+      isLocalPositionsDirtyRef.current = true;
+      try {
+        await supabase.auth.updateUser({
+          data: { pathly_investment_positions: newPositions }
+        });
+      } catch (err) {
+        console.error('Failed to save investment positions to Supabase:', err);
+      } finally {
+        setTimeout(() => {
+          isLocalPositionsDirtyRef.current = false;
+        }, 1200);
+      }
+    }
+  };
+
+  const addInvestmentPosition = async (positionData: Omit<InvestmentPosition, 'id'>): Promise<InvestmentPosition> => {
+    const newPosition: InvestmentPosition = {
+      ...positionData,
+      id: `pos-${Date.now()}-${Math.random().toString(36).substr(2, 7)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const currentList = investmentPositionsRef.current;
+    // Prevent rapid duplicate clicks
+    const exists = currentList.some(p => 
+      p.symbol.toUpperCase() === newPosition.symbol.toUpperCase() && 
+      p.accountId === newPosition.accountId &&
+      p.shares === newPosition.shares &&
+      p.buyPrice === newPosition.buyPrice
+    );
+    if (exists) {
+      return currentList.find(p => p.symbol.toUpperCase() === newPosition.symbol.toUpperCase() && p.accountId === newPosition.accountId) || newPosition;
+    }
+
+    const updated = [...currentList, newPosition];
+    await saveInvestmentPositions(updated);
+    return newPosition;
+  };
+
+  const updateInvestmentPosition = async (id: string, updates: Partial<InvestmentPosition>) => {
+    const currentList = investmentPositionsRef.current;
+    const updated = currentList.map(pos =>
+      pos.id === id ? { ...pos, ...updates, updatedAt: new Date().toISOString() } : pos
+    );
+    await saveInvestmentPositions(updated);
+  };
+
+  const deleteInvestmentPosition = async (id: string) => {
+    const currentList = investmentPositionsRef.current;
+    const updated = currentList.filter(pos => pos.id !== id);
+    await saveInvestmentPositions(updated);
+  };
+
+  // --- ONE TIME CLEANUP ---
+  useEffect(() => {
+    const cleanup = async () => {
+      if (!user || transactions.length === 0 || debtPayments.length === 0 || debts.length === 0) return;
+      const alreadyCleaned = localStorage.getItem('pathly_debt_cleaned_v2');
+      if (alreadyCleaned) return;
+
+      const debtCategory = categories.find(c => c.type === 'debt');
+      if (!debtCategory) return;
+
+      console.log('🧹 Démarrage du nettoyage des dettes en double...');
+
+      // 1. Transactions
+      const debtTx = transactions.filter(t => t.categoryId === debtCategory.id && t.description.startsWith('Dette:'));
+      const groupedTx: any = {};
+      debtTx.forEach(t => {
+        const key = `${new Date(t.date).toISOString().split('T')[0]}_${t.description}`;
+        if (!groupedTx[key]) groupedTx[key] = [];
+        groupedTx[key].push(t);
+      });
+
+      const txToDelete: string[] = [];
+      Object.values(groupedTx).forEach((group: any) => {
+        if (group.length > 1) {
+          txToDelete.push(...group.slice(1).map((t: any) => t.id));
+        }
+      });
+
+      if (txToDelete.length > 0) {
+        for (const id of txToDelete) {
+          await deleteTransaction(id);
+        }
+      }
+
+      // 2. Debt Payments
+      const groupedDp: any = {};
+      debtPayments.forEach(dp => {
+        const key = `${dp.debtId}_${new Date(dp.date).toISOString().split('T')[0]}`;
+        if (!groupedDp[key]) groupedDp[key] = [];
+        groupedDp[key].push(dp);
+      });
+
+      const dpToDelete: string[] = [];
+      const principalToRestore: any = {};
+      Object.values(groupedDp).forEach((group: any) => {
+        if (group.length > 1) {
+          const duplicates = group.slice(1);
+          duplicates.forEach((dp: any) => {
+            dpToDelete.push(dp.id);
+            if (!principalToRestore[dp.debtId]) principalToRestore[dp.debtId] = 0;
+            principalToRestore[dp.debtId] += dp.principal;
+          });
+        }
+      });
+
+      if (dpToDelete.length > 0) {
+        for (const id of dpToDelete) {
+          await supabase.from('debt_payments').delete().eq('id', id);
+        }
+        
+        for (const [debtId, principal] of Object.entries(principalToRestore)) {
+          const debt = debts.find(d => d.id === debtId);
+          if (debt) {
+            const newAmount = debt.remainingAmount + (principal as number);
+            await updateDebt(debtId, { remainingAmount: newAmount, isActive: newAmount > 0 });
+            debt.remainingAmount = newAmount;
+            if (newAmount > 0) debt.isActive = true;
+          }
+        }
+      }
+
+      localStorage.setItem('pathly_debt_cleaned_v2', 'true');
+      console.log('✅ Nettoyage terminé !');
+      window.location.reload();
+    };
+    cleanup();
+  }, [user?.id, transactions.length, debtPayments.length, debts.length, categories.length]);
+  // --- FIN CLEANUP ---
+
+  useEffect(() => {
+    accountsRef.current = accounts;
+  }, [accounts]);
+
+  // --- Balance history: one end-of-day snapshot per account, kept up to date as balances change ---
+  const [balanceSnapshots, setBalanceSnapshots] = useState<BalanceSnapshot[]>([]);
+  const [snapshotsLoaded, setSnapshotsLoaded] = useState(false);
+  const snapshotCache = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    snapshotCache.current = new Map();
+    setBalanceSnapshots([]);
+    setSnapshotsLoaded(false);
+    if (!user) return;
+
+    let cancelled = false;
+    supabaseService.getBalanceSnapshots(user.id)
+      .then(rows => {
+        if (cancelled) return;
+        rows.forEach(r => snapshotCache.current.set(`${r.accountId}|${r.date}`, r.balance));
+        setBalanceSnapshots(rows);
+      })
+      .catch(error => {
+        // Table missing (migration not applied yet) must never break the app
+        console.warn('Balance snapshots unavailable:', error);
+      })
+      .finally(() => {
+        if (!cancelled) setSnapshotsLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user || !snapshotsLoaded || accounts.length === 0) return;
+
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const rows = accounts
+      .filter(a => snapshotCache.current.get(`${a.id}|${today}`) !== a.balance)
+      .map(a => ({ accountId: a.id, date: today, balance: a.balance }));
+    if (rows.length === 0) return;
+
+    supabaseService.upsertBalanceSnapshots(user.id, rows)
+      .then(() => {
+        rows.forEach(r => snapshotCache.current.set(`${r.accountId}|${r.date}`, r.balance));
+        setBalanceSnapshots(prev => {
+          const written = new Set(rows.map(r => `${r.accountId}|${r.date}`));
+          return [...prev.filter(s => !written.has(`${s.accountId}|${s.date}`)), ...rows];
+        });
+      })
+      .catch(error => console.warn('Could not save balance snapshot:', error));
+  }, [accounts, user?.id, snapshotsLoaded]);
+
+  useEffect(() => {
+    if (!user || transactions.length === 0 || accounts.length === 0) return;
+
+    generateRecurringTransactions();
+    generateAutoDebtPayments();
+    reconcileScheduledTransactionStatuses();
+  }, [user?.id, transactions, accounts, debts]);
+
+  useEffect(() => {
+    if (user) {
+      console.log('💰 User detected, loading budget data...');
+      loadUserData(user.id);
+    } else {
+      // Clear data when user logs out
+      console.log('🔄 Clearing budget data after logout');
+      loadRequestId.current++;
+      setTransactions([]);
+      setCategories([]);
+      setAccounts([]);
+      setBudgets([]);
+      setSavingsGoals([]);
+      setDebts([]);
+      setDebtPayments([]);
+      setSelectedAccountIds([]);
+      setMigrationStatus('pending');
+    }
+  }, [user?.id]);
+
+  const loadUserData = async (userId = user?.id) => {
+    if (!userId) return;
+
+    console.log('💰 Loading budget data for user:', user?.email || userId);
+    const requestId = ++loadRequestId.current;
+    setIsLoading(true);
+    
+    try {
+      // Check if user has data in Supabase
+      const [
+        supabaseAccounts,
+        supabaseCategories,
+        supabaseTransactions,
+        supabaseBudgets,
+        supabaseSavingsGoals,
+        supabaseDebts,
+        supabaseDebtPayments
+      ] = await Promise.all([
+        supabaseService.getAccounts(userId),
+        supabaseService.getCategories(userId),
+        supabaseService.getTransactions(userId),
+        supabaseService.getBudgets(userId),
+        supabaseService.getSavingsGoals(userId),
+        supabaseService.getDebts(userId),
+        supabaseService.getDebtPayments()
+      ]);
+
+      console.log('📊 Supabase data loaded:', {
+        accounts: supabaseAccounts.length,
+        categories: supabaseCategories.length,
+        transactions: supabaseTransactions.length,
+        budgets: supabaseBudgets.length,
+        goals: supabaseSavingsGoals.length,
+        debts: supabaseDebts.length
+      });
+
+      if (requestId !== loadRequestId.current) return;
+
+      // If no data in Supabase, try to migrate from IndexedDB
+      if (supabaseAccounts.length === 0 && supabaseCategories.length === 0 && supabaseTransactions.length === 0) {
+        console.log('🔄 No data found, attempting migration...');
+        await migrateFromIndexedDB();
+        
+        // Reload data after migration
+        const [
+          newAccounts,
+          newCategories,
+          newTransactions,
+          newBudgets,
+          newSavingsGoals,
+          newDebts,
+          newDebtPayments
+        ] = await Promise.all([
+          supabaseService.getAccounts(userId),
+          supabaseService.getCategories(userId),
+          supabaseService.getTransactions(userId),
+          supabaseService.getBudgets(userId),
+          supabaseService.getSavingsGoals(userId),
+          supabaseService.getDebts(userId),
+          supabaseService.getDebtPayments()
+        ]);
+
+        if (requestId !== loadRequestId.current) return;
+
+        const cleanAccounts = dedupeAccounts(newAccounts);
+        const normalized = normalizeCategoryRefs(newCategories, newTransactions, newBudgets);
+
+        setAccounts(cleanAccounts);
+        setCategories(normalized.categories);
+        setTransactions(normalized.transactions);
+        setBudgets(normalized.budgets);
+        setSavingsGoals(newSavingsGoals);
+        setDebts(newDebts);
+        setDebtPayments(newDebtPayments);
+        setSelectedAccountIds(cleanAccounts.map(acc => acc.id));
+      } else {
+        if (requestId !== loadRequestId.current) return;
+
+        console.log('✅ Using existing Supabase data');
+        const cleanAccounts = dedupeAccounts(supabaseAccounts);
+        const normalized = normalizeCategoryRefs(supabaseCategories, supabaseTransactions, supabaseBudgets);
+
+        setAccounts(cleanAccounts);
+        setCategories(normalized.categories);
+        setTransactions(normalized.transactions);
+        setBudgets(normalized.budgets);
+        setSavingsGoals(supabaseSavingsGoals);
+        setDebts(supabaseDebts);
+        setDebtPayments(supabaseDebtPayments);
+        setSelectedAccountIds(cleanAccounts.map(acc => acc.id));
+      }
+
+      setMigrationStatus('completed');
+      console.log('✅ Budget data loaded successfully');
+
+    } catch (error) {
+      console.error('❌ Error loading user data:', error);
+      if (requestId === loadRequestId.current) {
+        setMigrationStatus('error');
+      }
+    } finally {
+      if (requestId === loadRequestId.current) {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const reloadAll = async () => {
+    await loadUserData();
+  };
+
+  const migrateFromIndexedDB = async () => {
+    if (!user) return;
+
+    try {
+      console.log('🔄 Starting migration from IndexedDB...');
+      // Initialize IndexedDB
+      await db.init();
+
+      // Get data from IndexedDB
+      const [
+        indexedDBTransactions,
+        indexedDBCategories,
+        indexedDBAccounts,
+        indexedDBBudgets,
+        indexedDBSavingsGoals,
+        indexedDBDebts,
+        indexedDBDebtPayments
+      ] = await Promise.all([
+        db.getTransactionsByUserId(user.id),
+        db.getCategoriesByUserId(user.id),
+        db.getAccountsByUserId(user.id),
+        db.getBudgetsByUserId(user.id),
+        db.getSavingsGoalsByUserId(user.id),
+        db.getDebtsByUserId(user.id),
+        db.getDebtPayments()
+      ]);
+
+      // If no data in IndexedDB either, create default data
+      if (indexedDBAccounts.length === 0 && indexedDBCategories.length === 0) {
+        console.log('📝 No existing data found, creating defaults...');
+        await createDefaultData();
+        return;
+      }
+
+      console.log('🔄 Migrating data to Supabase...', {
+        accounts: indexedDBAccounts.length,
+        categories: indexedDBCategories.length,
+        transactions: indexedDBTransactions.length
+      });
+
+      // Migrate data to Supabase
+      const migrationData = {
+        transactions: indexedDBTransactions,
+        categories: indexedDBCategories,
+        accounts: indexedDBAccounts,
+        budgets: indexedDBBudgets,
+        savingsGoals: indexedDBSavingsGoals,
+        debts: indexedDBDebts,
+        debtPayments: indexedDBDebtPayments
+      };
+
+      await supabaseService.migrateFromIndexedDB(user.id, migrationData);
+      console.log('✅ Migration from IndexedDB to Supabase completed successfully');
+
+    } catch (error) {
+      console.error('❌ Migration from IndexedDB failed:', error);
+      // Create default data if migration fails
+      await createDefaultData();
+    }
+  };
+
+  const createDefaultData = async () => {
+    if (!user) return;
+
+    try {
+      console.log('📝 Creating default categories and accounts...');
+      
+      const [existingCategories, existingAccounts] = await Promise.all([
+        supabaseService.getCategories(user.id),
+        supabaseService.getAccounts(user.id),
+      ]);
+      const existingCategoryKeys = new Set(
+        existingCategories.map(category => `${category.type}:${category.name.trim().toLowerCase()}`)
+      );
+      const existingAccountKeys = new Set(
+        existingAccounts.map(account => `${account.type}:${account.name.trim().toLowerCase()}`)
+      );
+
+      // Create default categories
+      for (const categoryData of defaultCategories) {
+        const key = `${categoryData.type}:${categoryData.name.trim().toLowerCase()}`;
+        if (existingCategoryKeys.has(key)) continue;
+        existingCategoryKeys.add(key);
+        await supabaseService.createCategory({
+          ...categoryData,
+          userId: user.id,
+        });
+      }
+
+      // Create default accounts
+      for (const accountData of defaultAccounts) {
+        const key = `${accountData.type}:${accountData.name.trim().toLowerCase()}`;
+        if (existingAccountKeys.has(key)) continue;
+        existingAccountKeys.add(key);
+        await supabaseService.createAccount({
+          ...accountData,
+          userId: user.id,
+        });
+      }
+
+      console.log('✅ Default data created successfully');
+    } catch (error) {
+      console.error('❌ Error creating default data:', error);
+    }
+  };
+
+  // Transaction functions
+  const addTransaction = async (transaction: Omit<Transaction, 'id' | 'userId'>) => {
+    if (!user) return;
+    if (!transaction.accountId) {
+      throw new Error('Aucun compte sélectionné pour cette transaction');
+    }
+    if (!transaction.categoryId) {
+      throw new Error('Aucune catégorie sélectionnée pour cette transaction');
+    }
+    
+    try {
+      const newTransaction = await supabaseService.createTransaction({
+        ...transaction,
+        userId: user.id,
+      });
+      
+      setTransactions(prev => [newTransaction, ...prev]);
+
+      // Update account balance only for completed transactions
+      if (newTransaction.status === 'completed') {
+        await updateAccountBalance(
+          transaction.accountId, 
+          getAccountBalanceImpact(newTransaction)
+        );
+      }
+    } catch (error) {
+      console.error('Error adding transaction:', error);
+      throw error;
+    }
+  };
+
+  const updateDependentRecurringTransactions = async (
+    sourceId: string,
+    sourceAmount: number,
+    currentTransactions: Transaction[]
+  ) => {
+    const dependentTransactions = currentTransactions.filter(t => 
+      t.id !== sourceId &&
+      t.isRecurring &&
+      t.recurringPattern?.isActive &&
+      t.recurringPattern?.calculationType === 'percentage' &&
+      t.recurringPattern?.linkedTransactionId === sourceId
+    );
+
+    for (const dep of dependentTransactions) {
+      const pct = dep.recurringPattern?.percentage || 0;
+      const newDepAmount = Math.round((sourceAmount * (pct / 100)) * 100) / 100;
+      if (Math.abs(newDepAmount - dep.amount) >= 0.005) {
+        const updatedDep = await supabaseService.updateTransaction(dep.id, { amount: newDepAmount });
+        setTransactions(prev => prev.map(t => t.id === dep.id ? updatedDep : t));
+        await updateDependentRecurringTransactions(dep.id, newDepAmount, currentTransactions);
+      }
+    }
+  };
+
+  const updateTransaction = async (id: string, updates: Partial<Transaction>) => {
+    if (!user) return;
+
+    try {
+      const oldTransaction = transactions.find(t => t.id === id);
+      if (!oldTransaction) return;
+
+      const updatedTransaction = await supabaseService.updateTransaction(id, updates);
+      
+      setTransactions(prev => prev.map(t => t.id === id ? updatedTransaction : t));
+
+      // Update account balances if amount, account, type or completion status changed
+      if (
+        updates.amount !== undefined ||
+        updates.accountId !== undefined ||
+        updates.type !== undefined ||
+        updates.status !== undefined
+      ) {
+        // Revert old transaction effect (only if it was completed)
+        if (oldTransaction.status === 'completed') {
+          await updateAccountBalance(
+            oldTransaction.accountId, 
+            -getAccountBalanceImpact(oldTransaction)
+          );
+        }
+        
+        // Apply new transaction effect (only if it's completed)
+        if (updatedTransaction.status === 'completed') {
+          await updateAccountBalance(
+            updatedTransaction.accountId, 
+            getAccountBalanceImpact(updatedTransaction)
+          );
+        }
+      }
+
+      // If amount was updated, cascade to dependent recurring transactions (e.g. bonus / prime % based on salary)
+      if (updates.amount !== undefined && updates.amount !== oldTransaction.amount) {
+        await updateDependentRecurringTransactions(id, updatedTransaction.amount, transactions);
+      }
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+      throw error;
+    }
+  };
+
+  const deleteTransaction = async (id: string) => {
+    if (!user) return;
+
+    try {
+      const transaction = transactions.find(t => t.id === id);
+      if (!transaction) return;
+
+      await supabaseService.deleteTransaction(id);
+      setTransactions(prev => prev.filter(t => t.id !== id));
+
+      // Revert account balance (only if it was completed)
+      if (transaction.status === 'completed') {
+        await updateAccountBalance(
+          transaction.accountId, 
+          -getAccountBalanceImpact(transaction)
+        );
+      }
+
+      // If any recurring transactions were linked to this deleted transaction, switch them back to fixed
+      const dependentTransactions = transactions.filter(t =>
+        t.isRecurring &&
+        t.recurringPattern?.linkedTransactionId === id
+      );
+      for (const dep of dependentTransactions) {
+        if (dep.recurringPattern) {
+          const updatedPattern: RecurringPattern = {
+            ...dep.recurringPattern,
+            calculationType: 'fixed',
+            percentage: undefined,
+            linkedTransactionId: undefined,
+          };
+          const updatedDep = await supabaseService.updateTransaction(dep.id, { recurringPattern: updatedPattern });
+          setTransactions(prev => prev.map(t => t.id === dep.id ? updatedDep : t));
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      throw error;
+    }
+  };
+
+  const getScheduledTransactions = (startDate: Date, endDate: Date): Transaction[] => {
+    return transactions.filter(t => 
+      t.status === 'scheduled' && 
+      t.date >= startDate && 
+      t.date <= endDate
+    );
+  };
+
+  const getNextRecurringDate = (date: Date, pattern: RecurringPattern) => {
+    switch (pattern.frequency) {
+      case 'daily':
+        return addDays(date, pattern.interval);
+      case 'weekly':
+        return addWeeks(date, pattern.interval);
+      case 'monthly':
+        return addMonths(date, pattern.interval);
+      case 'quarterly':
+        return addMonths(date, pattern.interval * 3);
+      case 'yearly':
+        return addYears(date, pattern.interval);
+      default:
+        return addMonths(date, 1);
+    }
+  };
+
+  const getProjectedRecurringTransactions = (startDate: Date, endDate: Date): Transaction[] => {
+    const projectedTransactions: Transaction[] = [];
+    const rangeStart = startOfDay(startDate);
+    const rangeEnd = startOfDay(endDate);
+
+    transactions
+      .filter(transaction => transaction.isRecurring && transaction.recurringPattern?.isActive)
+      .forEach(template => {
+        const pattern = template.recurringPattern!;
+        let occurrenceDate = startOfDay(pattern.nextDate);
+        let occurrenceCount = pattern.currentOccurrence || 0;
+
+        while (occurrenceDate < rangeStart) {
+          if (pattern.endDate && isAfter(occurrenceDate, startOfDay(pattern.endDate))) return;
+          if (pattern.maxOccurrences && occurrenceCount >= pattern.maxOccurrences) return;
+
+          const nextDate = getNextRecurringDate(occurrenceDate, pattern);
+          if (!nextDate || !isAfter(nextDate, occurrenceDate)) return;
+          occurrenceDate = startOfDay(nextDate);
+          occurrenceCount += 1;
+        }
+
+        while (occurrenceDate <= rangeEnd) {
+          if (pattern.endDate && isAfter(occurrenceDate, startOfDay(pattern.endDate))) break;
+          if (pattern.maxOccurrences && occurrenceCount >= pattern.maxOccurrences) break;
+
+          projectedTransactions.push({
+            ...template,
+            id: `${template.id}-projected-${occurrenceDate.toISOString()}`,
+            date: occurrenceDate,
+            status: 'scheduled',
+            isRecurring: false,
+            recurringPattern: undefined,
+          });
+
+          const nextDate = getNextRecurringDate(occurrenceDate, pattern);
+          if (!nextDate || !isAfter(nextDate, occurrenceDate)) break;
+          occurrenceDate = startOfDay(nextDate);
+          occurrenceCount += 1;
+        }
+      });
+
+    return projectedTransactions;
+  };
+
+  const isExcludedFromReports = (transaction: Transaction) =>
+    categories.find(category => category.id === transaction.categoryId)?.excludeFromReports === true;
+
+  const getAutoCompletionDate = (date: Date) => {
+    const threshold = startOfDay(date);
+    threshold.setMinutes(1);
+    return threshold;
+  };
+
+  const reconcileScheduledTransactionStatuses = async () => {
+    const now = new Date();
+    const dueTransactions = transactions.filter(transaction =>
+      transaction.status === 'scheduled' &&
+      !transaction.isRecurring &&
+      !isAfter(getAutoCompletionDate(transaction.date), now)
+    );
+    for (const transaction of dueTransactions) {
+      try {
+        await updateTransaction(transaction.id, { status: 'completed' });
+      } catch (error) {
+        console.error('Error completing scheduled transaction:', error);
+      }
+    }
+  };
+
+  // Account functions
+  const addAccount = async (account: Omit<BankAccount, 'id' | 'userId'>) => {
+    if (!user) return;
+    const duplicate = accounts.some(existing =>
+      existing.type === account.type &&
+      existing.name.trim().toLowerCase() === account.name.trim().toLowerCase()
+    );
+    if (duplicate) {
+      console.warn('Un compte avec ce nom existe déjà');
+      return;
+    }
+    
+    try {
+      const newAccount = await supabaseService.createAccount({
+        ...account,
+        userId: user.id,
+      });
+      
+      setAccounts(prev => [...prev, newAccount]);
+      setSelectedAccountIds(prev => [...prev, newAccount.id]);
+    } catch (error) {
+      console.error('Error adding account:', error);
+      throw error;
+    }
+  };
+
+  const updateAccount = async (id: string, updates: Partial<BankAccount>) => {
+    if (!user) return;
+
+    try {
+      const updatedAccount = await supabaseService.updateAccount(id, updates);
+      setAccounts(prev => prev.map(a => a.id === id ? updatedAccount : a));
+    } catch (error) {
+      console.error('Error updating account:', error);
+      throw error;
+    }
+  };
+
+  const deleteAccount = async (id: string) => {
+    if (!user) return;
+
+    try {
+      await supabaseService.deleteAccount(id);
+      setAccounts(prev => prev.filter(a => a.id !== id));
+      setSelectedAccountIds(prev => prev.filter(accountId => accountId !== id));
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      throw error;
+    }
+  };
+
+  const updateAccountBalance = async (accountId: string, amount: number) => {
+    if (!user) return;
+
+    try {
+      const latestAccounts = await supabaseService.getAccounts(user.id);
+      const account = latestAccounts.find(a => a.id === accountId);
+      if (!account) return;
+
+      const updatedAccount = await supabaseService.updateAccount(accountId, {
+        balance: account.balance + amount
+      });
+      accountsRef.current = accountsRef.current.map(a => a.id === accountId ? updatedAccount : a);
+      setAccounts(accountsRef.current);
+    } catch (error) {
+      console.error('Error updating account balance:', error);
+      throw error;
+    }
+  };
+
+  const transferBetweenAccounts = async (fromAccountId: string, toAccountId: string, amount: number, description: string, date: Date = new Date()) => {
+    if (!user) return;
+
+    try {
+      const fromAccount = accounts.find(a => a.id === fromAccountId);
+      const toAccount = accounts.find(a => a.id === toAccountId);
+
+      if (!fromAccount || !toAccount) {
+        throw new Error('Compte introuvable pour ce transfert');
+      }
+
+      if (fromAccountId === toAccountId) {
+        throw new Error('Les comptes de départ et de destination doivent être différents');
+      }
+
+      if (amount <= 0 || !Number.isFinite(amount)) {
+        throw new Error('Le montant du transfert doit être positif');
+      }
+
+      let transferCategory = categories.find(category =>
+        category.name.trim().toLowerCase() === 'transferts'
+      );
+
+      if (!transferCategory) {
+        transferCategory = await supabaseService.createCategory({
+          userId: user.id,
+          name: 'Transferts',
+          icon: 'ArrowRightLeft',
+          color: '#059669',
+          type: 'expense',
+          order: categories.length,
+          isActive: true,
+          description: 'Mouvements internes entre comptes',
+        });
+        setCategories(prev => [...prev, transferCategory!]);
+      }
+
+      const status = startOfDay(date) > startOfDay(new Date()) ? 'scheduled' : 'completed';
+
+      // Create transfer transactions
+      const transferOut = await supabaseService.createTransaction({
+        userId: user.id,
+        accountId: fromAccountId,
+        amount,
+        description: `Virement vers ${toAccount.name} - ${description}`,
+        date,
+        categoryId: transferCategory.id,
+        type: 'transfer',
+        status,
+        isRecurring: false,
+        transferToAccountId: toAccountId
+      });
+
+      const transferIn = await supabaseService.createTransaction({
+        userId: user.id,
+        accountId: toAccountId,
+        amount,
+        description: `Virement depuis ${fromAccount.name} - ${description}`,
+        date,
+        categoryId: transferCategory.id,
+        type: 'transfer',
+        status,
+        isRecurring: false,
+        transferToAccountId: fromAccountId
+      });
+
+      setTransactions(prev => [transferIn, transferOut, ...prev]);
+
+      if (status === 'completed') {
+        // Update balances
+        await updateAccountBalance(fromAccountId, -amount);
+        await updateAccountBalance(toAccountId, amount);
+      }
+    } catch (error) {
+      console.error('Error transferring between accounts:', error);
+      throw error;
+    }
+  };
+
+  // Category functions
+  const addCategory = async (category: Omit<Category, 'id'>) => {
+    if (!user) return;
+    const duplicate = categories.some(existing =>
+      existing.type === category.type &&
+      existing.name.trim().toLowerCase() === category.name.trim().toLowerCase()
+    );
+    if (duplicate) {
+      console.warn('Une catégorie avec ce nom existe déjà');
+      return;
+    }
+
+    try {
+      const newCategory = await supabaseService.createCategory({
+        ...category,
+        userId: user.id,
+      });
+      
+      setCategories(prev => [...prev, newCategory]);
+    } catch (error) {
+      console.error('Error adding category:', error);
+      throw error;
+    }
+  };
+
+  const updateCategory = async (id: string, updates: Partial<Category>) => {
+    try {
+      const updatedCategory = await supabaseService.updateCategory(id, updates);
+      setCategories(prev => prev.map(c => c.id === id ? updatedCategory : c));
+    } catch (error) {
+      console.error('Error updating category:', error);
+      throw error;
+    }
+  };
+
+  const deleteCategory = async (id: string) => {
+    try {
+      await supabaseService.deleteCategory(id);
+      setCategories(prev => prev.filter(c => c.id !== id));
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      throw error;
+    }
+  };
+
+  const reorderCategories = async (categoryIds: string[]) => {
+    try {
+      // Update order for each category
+      for (let i = 0; i < categoryIds.length; i++) {
+        const categoryId = categoryIds[i];
+        await supabaseService.updateCategory(categoryId, { order: i });
+      }
+      
+      // Update local state
+      setCategories(prev => prev.map(cat => {
+        const newOrder = categoryIds.indexOf(cat.id);
+        return newOrder >= 0 ? { ...cat, order: newOrder } : cat;
+      }));
+    } catch (error) {
+      console.error('Error reordering categories:', error);
+      throw error;
+    }
+  };
+
+  // Budget functions
+  const setBudget = async (budget: Omit<Budget, 'id' | 'userId'>) => {
+    if (!user) return;
+    
+    try {
+      const existingBudget = budgets.find(
+        b => b.categoryId === budget.categoryId && 
+             b.period === budget.period &&
+             isSameMonth(b.startDate, budget.startDate)
+      );
+
+      if (existingBudget) {
+        const updatedBudget = await supabaseService.updateBudget(existingBudget.id, {
+          amount: budget.amount
+        });
+        setBudgets(prev => prev.map(b => b.id === existingBudget.id ? updatedBudget : b));
+      } else {
+        const newBudget = await supabaseService.createBudget({
+          ...budget,
+          userId: user.id,
+        });
+        setBudgets(prev => [...prev, newBudget]);
+      }
+    } catch (error) {
+      console.error('Error setting budget:', error);
+      throw error;
+    }
+  };
+
+  const deleteBudget = async (id: string) => {
+    try {
+      await supabaseService.deleteBudget(id);
+      setBudgets(prev => prev.filter(b => b.id !== id));
+    } catch (error) {
+      console.error('Error deleting budget:', error);
+      throw error;
+    }
+  };
+
+  // Savings Goals functions
+  const addSavingsGoal = async (goal: Omit<SavingsGoal, 'id' | 'userId' | 'currentAmount' | 'isCompleted' | 'createdAt'>) => {
+    if (!user) return;
+    
+    try {
+      const newGoal = await supabaseService.createSavingsGoal({
+        ...goal,
+        userId: user.id,
+        currentAmount: 0,
+        isCompleted: false,
+        createdAt: new Date(),
+      });
+      
+      setSavingsGoals(prev => [newGoal, ...prev]);
+    } catch (error) {
+      console.error('Error adding savings goal:', error);
+      throw error;
+    }
+  };
+
+  const updateSavingsGoal = async (id: string, updates: Partial<SavingsGoal>) => {
+    try {
+      const updatedGoal = await supabaseService.updateSavingsGoal(id, updates);
+      setSavingsGoals(prev => prev.map(g => g.id === id ? updatedGoal : g));
+    } catch (error) {
+      console.error('Error updating savings goal:', error);
+      throw error;
+    }
+  };
+
+  const deleteSavingsGoal = async (id: string) => {
+    try {
+      await supabaseService.deleteSavingsGoal(id);
+      setSavingsGoals(prev => prev.filter(g => g.id !== id));
+    } catch (error) {
+      console.error('Error deleting savings goal:', error);
+      throw error;
+    }
+  };
+
+  const contributeToGoal = async (goalId: string, amount: number, accountId: string) => {
+    if (!user) return;
+
+    try {
+      const goal = savingsGoals.find(g => g.id === goalId);
+      if (!goal) return;
+
+      // Update goal
+      const newAmount = goal.currentAmount + amount;
+      const updatedGoal = await supabaseService.updateSavingsGoal(goalId, {
+        currentAmount: newAmount,
+        isCompleted: newAmount >= goal.targetAmount
+      });
+      setSavingsGoals(prev => prev.map(g => g.id === goalId ? updatedGoal : g));
+
+      // Create transaction
+      await addTransaction({
+        accountId,
+        amount,
+        description: `Épargne pour ${goal.title}`,
+        date: new Date(),
+        categoryId: goal.categoryId || 'cat-savings-1',
+        type: 'savings',
+        status: 'completed',
+        isRecurring: false,
+        memo: `Contribution à l'objectif: ${goal.title}`
+      });
+    } catch (error) {
+      console.error('Error contributing to goal:', error);
+      throw error;
+    }
+  };
+
+  // Debt functions
+  const addDebt = async (debt: Omit<Debt, 'id' | 'userId'>): Promise<Debt | undefined> => {
+    if (!user) return undefined;
+    
+    try {
+      const newDebt = await supabaseService.createDebt({
+        ...debt,
+        userId: user.id,
+      });
+      
+      setDebts(prev => [newDebt, ...prev]);
+      return newDebt;
+    } catch (error) {
+      console.error('Error adding debt:', error);
+      throw error;
+    }
+  };
+
+  const updateDebt = async (id: string, updates: Partial<Debt>) => {
+    try {
+      const updatedDebt = await supabaseService.updateDebt(id, updates);
+      setDebts(prev => prev.map(d => d.id === id ? updatedDebt : d));
+    } catch (error) {
+      console.error('Error updating debt:', error);
+      throw error;
+    }
+  };
+
+  const deleteDebt = async (id: string) => {
+    try {
+      await supabaseService.deleteDebt(id);
+      setDebts(prev => prev.filter(d => d.id !== id));
+    } catch (error) {
+      console.error('Error deleting debt:', error);
+      throw error;
+    }
+  };
+
+  const addDebtPayment = async (payment: Omit<DebtPayment, 'id'>) => {
+    try {
+      const newPayment = await supabaseService.createDebtPayment(payment);
+      setDebtPayments(prev => [newPayment, ...prev]);
+
+      // Update debt remaining amount
+      const debt = debts.find(d => d.id === payment.debtId);
+      if (debt) {
+        await updateDebt(payment.debtId, {
+          remainingAmount: debt.remainingAmount - payment.principal
+        });
+      }
+    } catch (error) {
+      console.error('Error adding debt payment:', error);
+      throw error;
+    }
+  };
+
+  // Recurring transactions logic
+  const generateRecurringTransactions = () => {
+    if (!user) return;
+
+    const now = new Date();
+    const recurringTransactions = transactions.filter(t => t.isRecurring && t.recurringPattern?.isActive);
+    const occurrenceExists = (template: Transaction, date: Date, accountId = template.accountId) => {
+      const maxDateDistanceMs = 7 * 24 * 60 * 60 * 1000;
+      return transactions.some(transaction =>
+        !transaction.isRecurring &&
+        transaction.accountId === accountId &&
+        transaction.categoryId === template.categoryId &&
+        transaction.type === template.type &&
+        Math.abs(transaction.amount - template.amount) < 0.01 &&
+        Math.abs(startOfDay(transaction.date).getTime() - startOfDay(date).getTime()) <= maxDateDistanceMs
+      );
+    };
+
+    recurringTransactions.forEach(template => {
+      const pattern = template.recurringPattern!;
+
+      let skippedPastOccurrence = false;
+      while (isBefore(startOfDay(pattern.nextDate), startOfDay(now))) {
+        if (pattern.endDate && isAfter(pattern.nextDate, pattern.endDate)) break;
+
+        const nextDate = getNextRecurringDate(pattern.nextDate, pattern);
+        if (!nextDate || !isAfter(nextDate, pattern.nextDate)) break;
+
+        pattern.nextDate = nextDate;
+        skippedPastOccurrence = true;
+      }
+
+      if (skippedPastOccurrence) {
+        updateTransaction(template.id, {
+          recurringPattern: {
+            ...pattern,
+            nextDate: pattern.nextDate,
+          },
+        });
+      }
+
+      // Generate only the occurrence due today after 00:01. Older missed occurrences
+      // are skipped to avoid mutating a bank-reconciled balance retroactively.
+      while (isSameDay(pattern.nextDate, now) && !isAfter(getAutoCompletionDate(pattern.nextDate), now)) {
+        // Check if we've reached the end date or max occurrences
+        if (pattern.endDate && isAfter(pattern.nextDate, pattern.endDate)) break;
+        if (pattern.maxOccurrences && pattern.currentOccurrence && pattern.currentOccurrence >= pattern.maxOccurrences) break;
+
+        // Generate new transaction
+        const newTransactionData = {
+          ...template,
+          date: new Date(pattern.nextDate),
+          status: 'completed' as const,
+          isRecurring: false, // Generated transactions are not recurring themselves
+          recurringPattern: undefined,
+        };
+
+        // Create transaction in Supabase
+        if (!occurrenceExists(template, pattern.nextDate)) {
+          addTransaction(newTransactionData);
+        }
+        if (template.type === 'transfer' && template.transferToAccountId) {
+          const fromAccount = accountsRef.current.find(account => account.id === template.accountId);
+          const transferInDescription = `Virement depuis ${fromAccount?.name || 'compte'} - ${template.description.replace(/^Virement vers .+? - /, '')}`;
+          const transferInExists = transactions.some(transaction =>
+            !transaction.isRecurring &&
+            transaction.accountId === template.transferToAccountId &&
+            transaction.categoryId === template.categoryId &&
+            transaction.type === template.type &&
+            transaction.amount === template.amount &&
+            transaction.description === transferInDescription &&
+            isSameDay(transaction.date, pattern.nextDate)
+          );
+
+          if (!transferInExists) {
+            addTransaction({
+              ...newTransactionData,
+              accountId: template.transferToAccountId,
+              description: transferInDescription,
+              transferToAccountId: template.accountId,
+            });
+          }
+        }
+
+        // Calculate next occurrence
+        let nextDate: Date;
+        switch (pattern.frequency) {
+          case 'daily':
+            nextDate = addDays(pattern.nextDate, pattern.interval);
+            break;
+          case 'weekly':
+            nextDate = addWeeks(pattern.nextDate, pattern.interval);
+            break;
+          case 'monthly':
+            nextDate = addMonths(pattern.nextDate, pattern.interval);
+            break;
+          case 'quarterly':
+            nextDate = addMonths(pattern.nextDate, pattern.interval * 3);
+            break;
+          case 'yearly':
+            nextDate = addYears(pattern.nextDate, pattern.interval);
+            break;
+          default:
+            nextDate = addMonths(pattern.nextDate, 1);
+        }
+
+        // Update the recurring pattern
+        const updatedPattern: RecurringPattern = {
+          ...pattern,
+          nextDate,
+          lastGenerated: new Date(),
+          currentOccurrence: (pattern.currentOccurrence || 0) + 1,
+        };
+
+        // Update the template transaction
+        updateTransaction(template.id, {
+          recurringPattern: updatedPattern,
+        });
+
+        pattern.nextDate = nextDate;
+        pattern.currentOccurrence = updatedPattern.currentOccurrence;
+      }
+    });
+  };
+
+  // Auto-deduct debts logic
+  const generateAutoDebtPayments = () => {
+    if (!user) return;
+    const now = new Date();
+
+    debts.forEach(debt => {
+      if (!debt.isActive || debt.remainingAmount <= 0) return;
+
+      let currentDueDate = new Date(debt.dueDate);
+      let updated = false;
+      let newRemainingAmount = debt.remainingAmount;
+
+      while (
+        isBefore(startOfDay(currentDueDate), startOfDay(now)) || 
+        (isSameDay(currentDueDate, now) && !isAfter(getAutoCompletionDate(currentDueDate), now))
+      ) {
+        if (debt.endDate && isAfter(currentDueDate, new Date(debt.endDate))) break;
+
+        const expectedAmount = Math.min(debt.minimumPayment, newRemainingAmount);
+        
+        if (expectedAmount > 0) {
+          const monthlyRate = debt.interestRate / 100 / 12;
+          const interest = newRemainingAmount * monthlyRate;
+          const principal = expectedAmount - interest;
+
+          // 1. Create actual transaction (expense)
+          const debtCategory = categories.find(c => c.type === 'debt');
+          const categoryId = debt.categoryId || (debtCategory ? debtCategory.id : '');
+          
+          const newTransactionData = {
+            userId: user.id,
+            accountId: debt.accountId,
+            amount: expectedAmount,
+            description: `Dette: ${debt.name}`,
+            date: new Date(currentDueDate),
+            categoryId,
+            type: 'expense' as const,
+            status: 'completed' as const,
+            isRecurring: false,
+          };
+          
+          addTransaction(newTransactionData);
+
+          // 2. Create debt payment record
+          supabaseService.createDebtPayment({
+            debtId: debt.id,
+            amount: expectedAmount,
+            principal: principal > 0 ? principal : expectedAmount,
+            interest: interest > 0 ? interest : 0,
+            date: new Date(currentDueDate),
+            paymentMethod: 'Auto',
+          }).then(newPayment => {
+            setDebtPayments(prev => [newPayment, ...prev]);
+          }).catch(console.error);
+
+          newRemainingAmount -= (principal > 0 ? principal : expectedAmount);
+        }
+
+        currentDueDate = addMonths(currentDueDate, 1);
+        updated = true;
+
+        if (newRemainingAmount <= 0) break;
+      }
+
+      if (updated) {
+        updateDebt(debt.id, {
+          dueDate: currentDueDate,
+          remainingAmount: newRemainingAmount,
+          isActive: newRemainingAmount > 0
+        });
+        
+        // Mutate the object in place so subsequent immediate renders don't re-trigger
+        debt.dueDate = currentDueDate;
+        debt.remainingAmount = newRemainingAmount;
+        if (newRemainingAmount <= 0) debt.isActive = false;
+      }
+    });
+  };
+
+  // Calendar events
+  const getCalendarEvents = (startDate: Date, endDate: Date): CalendarEvent[] => {
+    const events: CalendarEvent[] = [];
+
+    // Add transactions
+    transactions
+      .filter(t => !t.isRecurring && t.date >= startDate && t.date <= endDate)
+      .concat(getProjectedRecurringTransactions(startDate, endDate))
+      .forEach(transaction => {
+        const category = categories.find(c => c.id === transaction.categoryId);
+        events.push({
+          id: `transaction-${transaction.id}`,
+          date: transaction.date,
+          type: 'transaction',
+          title: transaction.description,
+          amount: transaction.amount,
+          status: transaction.status === 'completed' ? 'completed' : 'pending',
+          categoryId: transaction.categoryId,
+          color: category?.color,
+          relatedId: transaction.id,
+        });
+      });
+
+    // Add savings goal deadlines
+    savingsGoals
+      .filter(g => g.deadline && g.deadline >= startDate && g.deadline <= endDate && !g.isCompleted)
+      .forEach(goal => {
+        events.push({
+          id: `goal-${goal.id}`,
+          date: goal.deadline!,
+          type: 'goal_deadline',
+          title: `Échéance: ${goal.title}`,
+          status: 'pending',
+          color: goal.color || '#8B5CF6',
+          relatedId: goal.id,
+        });
+      });
+
+    // Add debt payments
+    debts
+      .filter(d => d.dueDate >= startDate && d.dueDate <= endDate && d.isActive)
+      .forEach(debt => {
+        events.push({
+          id: `debt-${debt.id}`,
+          date: debt.dueDate,
+          type: 'debt_payment',
+          title: `Paiement: ${debt.name}`,
+          amount: debt.minimumPayment,
+          status: 'pending',
+          color: '#EF4444',
+          relatedId: debt.id,
+        });
+      });
+
+    return events.sort((a, b) => a.date.getTime() - b.date.getTime());
+  };
+
+  // Analytics functions
+  const getFinancialSummary = (startDate: Date, endDate: Date): FinancialSummary => {
+    const periodTransactions = transactions.filter(t => 
+      t.date >= startDate && t.date <= endDate &&
+      !isExcludedFromReports(t) &&
+      (selectedAccountIds.length === 0 || selectedAccountIds.includes(t.accountId))
+    );
+
+    const income = {
+      total: periodTransactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0),
+      byCategory: periodTransactions
+        .filter(t => t.type === 'income')
+        .reduce((acc, t) => {
+          const category = categories.find(c => c.id === t.categoryId);
+          const categoryName = category?.name || 'Sans catégorie';
+          acc[categoryName] = (acc[categoryName] || 0) + t.amount;
+          return acc;
+        }, {} as Record<string, number>)
+    };
+
+    const expenses = {
+      total: periodTransactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0),
+      byCategory: periodTransactions
+        .filter(t => t.type === 'expense')
+        .reduce((acc, t) => {
+          const category = categories.find(c => c.id === t.categoryId);
+          const categoryName = category?.name || 'Sans catégorie';
+          acc[categoryName] = (acc[categoryName] || 0) + t.amount;
+          return acc;
+        }, {} as Record<string, number>)
+    };
+
+    const savings = {
+      total: periodTransactions
+        .filter(t => t.type === 'savings')
+        .reduce((sum, t) => sum + t.amount, 0),
+      byGoal: savingsGoals.reduce((acc, goal) => {
+        acc[goal.title] = goal.currentAmount;
+        return acc;
+      }, {} as Record<string, number>)
+    };
+
+    const netWorth = accounts
+      .filter(a => selectedAccountIds.length === 0 || selectedAccountIds.includes(a.id))
+      .reduce((sum, a) => sum + a.balance, 0) + 
+      totalAssetsValue - 
+      debts.reduce((sum, d) => sum + d.remainingAmount, 0);
+
+    const cashFlow = getCashFlowProjection(12);
+
+    const budgetPerformance = budgets
+      .filter(b => b.isActive)
+      .map(budget => {
+        const spent = periodTransactions
+          .filter(t => t.categoryId === budget.categoryId && t.type === 'expense')
+          .reduce((sum, t) => sum + t.amount, 0);
+        
+        return {
+          categoryId: budget.categoryId,
+          budgeted: budget.amount,
+          spent,
+          remaining: budget.amount - spent,
+          percentage: budget.amount > 0 ? (spent / budget.amount) * 100 : 0,
+        };
+      });
+
+    return {
+      period: { start: startDate, end: endDate },
+      income,
+      expenses,
+      savings,
+      netWorth,
+      cashFlow,
+      budgetPerformance
+    };
+  };
+
+  const getCashFlowProjection = (months: number, startDateParam?: Date, monthStartDay?: number): CashFlow[] => {
+    const projections: CashFlow[] = [];
+    const selectedAccountSet = new Set(selectedAccountIds);
+    const today = startOfDay(new Date());
+    const projectionStartDate = startOfDay(startDateParam ?? new Date());
+    const shouldIncludeAccount = (accountId: string) =>
+      selectedAccountIds.length === 0 || selectedAccountSet.has(accountId);
+    const cashFlowAccountIds = new Set(
+      accounts
+        .filter(account =>
+          account.isActive &&
+          account.type !== 'savings' &&
+          account.type !== 'investment' &&
+          account.type !== 'meal_voucher' &&
+          account.type !== 'crypto' &&
+          shouldIncludeAccount(account.id)
+        )
+        .map(account => account.id)
+    );
+    const savingsAccountIds = new Set(
+      accounts
+        .filter(account =>
+          account.isActive &&
+          account.type === 'savings' &&
+          shouldIncludeAccount(account.id)
+        )
+        .map(account => account.id)
+    );
+    const openingBalance = accounts
+      .filter(account => cashFlowAccountIds.has(account.id))
+      .reduce((sum, account) => sum + account.balance, 0);
+    const openingSavingsBalance = accounts
+      .filter(account => savingsAccountIds.has(account.id))
+      .reduce((sum, account) => sum + account.balance, 0);
+    
+    for (let i = 0; i < months; i++) {
+      const monthStart = monthStartDay != null
+        ? (i === 0 ? projectionStartDate : getCustomMonthStart(addMonths(projectionStartDate, i), monthStartDay))
+        : startOfMonth(addMonths(projectionStartDate, i));
+      const monthEnd = monthStartDay != null
+        ? getCustomMonthEnd(monthStart, monthStartDay)
+        : endOfMonth(monthStart);
+      
+      const monthTransactions = transactions.filter(t => 
+        t.date >= monthStart && t.date <= monthEnd &&
+        t.status === 'completed' &&
+        !isExcludedFromReports(t) &&
+        cashFlowAccountIds.has(t.accountId)
+      );
+      const completedMonthTransactionKeys = new Set(
+        monthTransactions.map(transaction => [
+          transaction.accountId,
+          transaction.categoryId,
+          transaction.type,
+          transaction.amount,
+          transaction.description.trim().toLowerCase(),
+          format(transaction.date, 'yyyy-MM-dd'),
+        ].join('|'))
+      );
+
+      const scheduledTransactions = getScheduledTransactions(monthStart, monthEnd)
+        .filter(t =>
+          !t.isRecurring &&
+          !isExcludedFromReports(t) &&
+          cashFlowAccountIds.has(t.accountId) &&
+          !completedMonthTransactionKeys.has([
+            t.accountId,
+            t.categoryId,
+            t.type,
+            t.amount,
+            t.description.trim().toLowerCase(),
+            format(t.date, 'yyyy-MM-dd'),
+          ].join('|'))
+        );
+      const pendingTransactions = transactions.filter(t =>
+        t.date >= monthStart &&
+        t.date <= monthEnd &&
+        t.status === 'pending' &&
+        !t.isRecurring &&
+        !isExcludedFromReports(t) &&
+        cashFlowAccountIds.has(t.accountId) &&
+        !completedMonthTransactionKeys.has([
+          t.accountId,
+          t.categoryId,
+          t.type,
+          t.amount,
+          t.description.trim().toLowerCase(),
+          format(t.date, 'yyyy-MM-dd'),
+        ].join('|'))
+      );
+      const actualTransactions = monthTransactions.concat(scheduledTransactions, pendingTransactions);
+      const isRecurringAlreadyRepresented = (projected: Transaction) => {
+        const maxDateDistanceMs = 7 * 24 * 60 * 60 * 1000;
+
+        return actualTransactions.some(actual => {
+          if (actual.accountId !== projected.accountId) return false;
+          if (actual.categoryId !== projected.categoryId) return false;
+          if (actual.type !== projected.type) return false;
+          if (Math.abs(actual.amount - projected.amount) > 0.01) return false;
+          if (Math.abs(startOfDay(actual.date).getTime() - startOfDay(projected.date).getTime()) > maxDateDistanceMs) return false;
+
+          const projDesc = projected.description.trim().toLowerCase();
+          const actDesc = actual.description.trim().toLowerCase();
+          if (projDesc && actDesc) {
+            if (projDesc.includes(actDesc) || actDesc.includes(projDesc)) return true;
+          }
+          return true;
+        });
+      };
+
+      const projectedRecurringTransactions = getProjectedRecurringTransactions(monthStart, monthEnd)
+        .filter(t =>
+          !isExcludedFromReports(t) &&
+          cashFlowAccountIds.has(t.accountId) &&
+          !isRecurringAlreadyRepresented(t)
+        );
+      const plannedTransactions = scheduledTransactions.concat(pendingTransactions, projectedRecurringTransactions);
+      const visibleMonthTransactions = monthTransactions.concat(plannedTransactions);
+      const cashMovementTransactions = visibleMonthTransactions;
+      const isDebtAlreadyRepresented = (debt: Debt, dueDate: Date) => {
+        const expectedAmount = Math.min(debt.minimumPayment, debt.remainingAmount);
+        const debtName = debt.name.trim().toLowerCase();
+        const maxDateDistanceMs = 5 * 24 * 60 * 60 * 1000;
+
+        return visibleMonthTransactions.some(transaction => {
+          if (transaction.accountId !== debt.accountId) return false;
+          if (transaction.type !== 'expense' && transaction.type !== 'bill') return false;
+          if (Math.abs(transaction.amount - expectedAmount) > 0.01) return false;
+          if (Math.abs(startOfDay(transaction.date).getTime() - dueDate.getTime()) > maxDateDistanceMs) return false;
+
+          const category = categories.find(item => item.id === transaction.categoryId);
+          const description = transaction.description.trim().toLowerCase();
+          const sameDebtCategory = debt.categoryId && transaction.categoryId === debt.categoryId;
+          const debtNamedInTransaction = debtName.length > 0 && (
+            description.includes(debtName) ||
+            debtName.includes(description)
+          );
+          const debtLikeCategory = category?.type === 'debt' || category?.name.toLowerCase().includes('prêt');
+
+          return Boolean(sameDebtCategory || debtNamedInTransaction || debtLikeCategory);
+        });
+      };
+      const debtPaymentsForMonth = debts
+        .filter(debt =>
+          debt.isActive &&
+          debt.minimumPayment > 0 &&
+          debt.remainingAmount > 0 &&
+          cashFlowAccountIds.has(debt.accountId)
+        )
+        .reduce((sum, debt) => {
+          let dueDate = startOfDay(debt.dueDate);
+          while (dueDate < monthStart) {
+            dueDate = startOfDay(addMonths(dueDate, 1));
+          }
+
+          if (dueDate > monthEnd || (i === 0 && dueDate < today)) return sum;
+          if (isDebtAlreadyRepresented(debt, dueDate)) return sum;
+          return sum + Math.min(debt.minimumPayment, debt.remainingAmount);
+        }, 0);
+
+      const transferInFromSavings = cashMovementTransactions
+        .filter(t =>
+          t.type === 'transfer' &&
+          cashFlowAccountIds.has(t.accountId) &&
+          t.transferToAccountId &&
+          savingsAccountIds.has(t.transferToAccountId) &&
+          t.description.toLowerCase().includes('depuis')
+        )
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const income = cashMovementTransactions
+        .filter(t => t.type === 'income' || t.type === 'refund' || t.type === 'savings_withdrawal')
+        .reduce((sum, t) => sum + t.amount, 0) + transferInFromSavings;
+
+      const transferOutToExternalAccounts = cashMovementTransactions
+        .filter(t =>
+          t.type === 'transfer' &&
+          cashFlowAccountIds.has(t.accountId) &&
+          t.transferToAccountId &&
+          !cashFlowAccountIds.has(t.transferToAccountId) &&
+          !savingsAccountIds.has(t.transferToAccountId) &&
+          !t.description.toLowerCase().includes('depuis')
+        )
+        .reduce((sum, t) => sum + t.amount, 0);
+      const transferOutToSavingsAccounts = cashMovementTransactions
+        .filter(t =>
+          t.type === 'transfer' &&
+          cashFlowAccountIds.has(t.accountId) &&
+          t.transferToAccountId &&
+          savingsAccountIds.has(t.transferToAccountId) &&
+          !t.description.toLowerCase().includes('depuis')
+        )
+        .reduce((sum, t) => sum + t.amount, 0);
+        
+      const baseExpenses = cashMovementTransactions
+        .filter(t => t.type === 'expense' || t.type === 'bill')
+        .reduce((sum, t) => sum + t.amount, 0);
+        
+      const savings = cashMovementTransactions
+        .filter(t => t.type === 'savings')
+        .reduce((sum, t) => sum + t.amount, 0);
+
+      const isDebtLikeCategory = (category?: Category) => {
+        const name = category?.name.toLowerCase() || '';
+        return category?.type === 'debt' || name.includes('prêt') || name.includes('credit') || name.includes('crédit');
+      };
+
+      const activeMonthBudgets = budgets.filter(
+        budget =>
+          budget.isActive &&
+          budget.startDate <= monthEnd &&
+          (!budget.endDate || budget.endDate >= monthStart)
+      );
+      const budgetCategoryIds = new Set(activeMonthBudgets.map(budget => budget.categoryId));
+      const monthBudgetItems = activeMonthBudgets
+        .map(budget => {
+          const category = categories.find(item => item.id === budget.categoryId);
+          if (!category || category.excludeFromReports || category.type !== 'expense') return null;
+          if (isDebtLikeCategory(category)) return null;
+
+          const normalizedAmount =
+            budget.period === 'yearly'
+              ? budget.amount / 12
+              : budget.period === 'weekly'
+                ? budget.amount * 4.345
+                : budget.amount;
+
+          return {
+            categoryId: budget.categoryId,
+            amount: normalizedAmount,
+          };
+        })
+        .filter((item): item is { categoryId: string; amount: number } => item !== null);
+
+      categories
+        .filter(category =>
+          category.type === 'expense' &&
+          !category.excludeFromReports &&
+          !isDebtLikeCategory(category) &&
+          category.budget &&
+          !budgetCategoryIds.has(category.id)
+        )
+        .forEach(category => {
+          monthBudgetItems.push({
+            categoryId: category.id,
+            amount: category.budget || 0,
+          });
+        });
+
+      const budgetReserve = monthBudgetItems.reduce((sum, budgetItem) => {
+        const committedForCategory = visibleMonthTransactions
+          .filter(transaction =>
+            transaction.categoryId === budgetItem.categoryId &&
+            (transaction.type === 'expense' || transaction.type === 'bill')
+          )
+          .reduce((categorySum, transaction) => categorySum + transaction.amount, 0);
+
+        return sum + Math.max(budgetItem.amount - committedForCategory, 0);
+      }, 0);
+
+      const totalOutflows = baseExpenses + debtPaymentsForMonth + transferOutToExternalAccounts + transferOutToSavingsAccounts + budgetReserve + savings;
+      const balance = income - totalOutflows;
+      
+      let projectedBalance: number;
+      let projectedSavingsBalance: number;
+      let monthOpeningBalance: number;
+      let monthOpeningSavingsBalance: number;
+
+      if (i === 0) {
+        const futurePlannedTransactions = plannedTransactions.filter(t => startOfDay(t.date) >= today);
+
+        const remainingTransferInFromSavings = futurePlannedTransactions
+          .filter(t =>
+            t.type === 'transfer' &&
+            cashFlowAccountIds.has(t.accountId) &&
+            t.transferToAccountId &&
+            savingsAccountIds.has(t.transferToAccountId) &&
+            t.description.toLowerCase().includes('depuis')
+          )
+          .reduce((sum, t) => sum + t.amount, 0);
+
+        const remainingIncome = futurePlannedTransactions
+          .filter(t => t.type === 'income' || t.type === 'refund' || t.type === 'savings_withdrawal')
+          .reduce((sum, t) => sum + t.amount, 0) + remainingTransferInFromSavings;
+
+        const remainingExternalTransfers = futurePlannedTransactions
+          .filter(t =>
+            t.type === 'transfer' &&
+            cashFlowAccountIds.has(t.accountId) &&
+            t.transferToAccountId &&
+            !cashFlowAccountIds.has(t.transferToAccountId) &&
+            !savingsAccountIds.has(t.transferToAccountId) &&
+            !t.description.toLowerCase().includes('depuis')
+          )
+          .reduce((sum, t) => sum + t.amount, 0);
+        const remainingSavingsTransfers = futurePlannedTransactions
+          .filter(t =>
+            t.type === 'transfer' &&
+            cashFlowAccountIds.has(t.accountId) &&
+            t.transferToAccountId &&
+            savingsAccountIds.has(t.transferToAccountId) &&
+            !t.description.toLowerCase().includes('depuis')
+          )
+          .reduce((sum, t) => sum + t.amount, 0);
+        const remainingBaseExpenses = futurePlannedTransactions
+          .filter(t => t.type === 'expense' || t.type === 'bill')
+          .reduce((sum, t) => sum + t.amount, 0);
+        const remainingSavings = futurePlannedTransactions
+          .filter(t => t.type === 'savings')
+          .reduce((sum, t) => sum + t.amount, 0);
+
+        const remainingOutflows = remainingBaseExpenses + debtPaymentsForMonth + remainingExternalTransfers + remainingSavingsTransfers + budgetReserve + remainingSavings;
+        const remainingDelta = remainingIncome - remainingOutflows;
+
+        projectedBalance = openingBalance + remainingDelta;
+        projectedSavingsBalance = openingSavingsBalance + remainingSavings + remainingSavingsTransfers;
+        
+        // Pour que l'affichage soit cohérent : Départ + Résultat complet = Fin
+        monthOpeningBalance = projectedBalance - balance;
+        monthOpeningSavingsBalance = projectedSavingsBalance - (savings + transferOutToSavingsAccounts);
+      } else {
+        monthOpeningBalance = projections[i - 1].projectedBalance;
+        monthOpeningSavingsBalance = projections[i - 1].projectedSavingsBalance || openingSavingsBalance;
+        projectedBalance = monthOpeningBalance + balance;
+        projectedSavingsBalance = monthOpeningSavingsBalance + savings + transferOutToSavingsAccounts;
+      }
+      
+      const projectedTotalBalance = projectedBalance + projectedSavingsBalance;
+
+      projections.push({
+        date: monthStart,
+        income,
+        expenses: totalOutflows,
+        savings: savings + transferOutToSavingsAccounts,
+        balance,
+        projectedBalance,
+        openingBalance: monthOpeningBalance,
+        projectedSavingsBalance,
+        projectedTotalBalance,
+        baseExpenses,
+        debtPayments: debtPaymentsForMonth,
+        transfersOut: transferOutToExternalAccounts,
+        budgetReserve,
+        scheduledTransactions: plannedTransactions,
+        allTransactions: visibleMonthTransactions
+      });
+    }
+
+    return projections;
+  };
+
+  // Export function
+  const exportData = async (options: ExportOptions): Promise<string> => {
+    const { format: exportFormat, dateRange, includeCategories, includeAccounts, includeGoals, includeDebts, includeRecurring } = options;
+    
+    const filteredTransactions = transactions.filter(t => 
+      t.date >= dateRange.start && t.date <= dateRange.end
+    );
+
+    const data = {
+      transactions: filteredTransactions,
+      ...(includeCategories && { categories }),
+      ...(includeAccounts && { accounts }),
+      ...(includeGoals && { savingsGoals }),
+      ...(includeDebts && { debts, debtPayments }),
+      ...(includeRecurring && { recurringTransactions: transactions.filter(t => t.isRecurring) }),
+      exportDate: new Date().toISOString(),
+      dateRange,
+    };
+
+    switch (exportFormat) {
+      case 'json':
+        return JSON.stringify(data, null, 2);
+      case 'csv':
+        // Simple CSV export for transactions
+        const csvHeaders = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Account'];
+        const csvRows = filteredTransactions.map(t => {
+          const category = categories.find(c => c.id === t.categoryId)?.name || '';
+          const account = accounts.find(a => a.id === t.accountId)?.name || '';
+          return [
+            format(t.date, 'yyyy-MM-dd'),
+            t.description,
+            t.amount.toString(),
+            t.type,
+            category,
+            account
+          ].join(',');
+        });
+        return [csvHeaders.join(','), ...csvRows].join('\n');
+      case 'pdf':
+        // For PDF, return a formatted text that could be converted to PDF
+        return `Budget Export - ${format(dateRange.start, 'dd/MM/yyyy')} to ${format(dateRange.end, 'dd/MM/yyyy')}\n\n${JSON.stringify(data, null, 2)}`;
+      default:
+        return JSON.stringify(data, null, 2);
+    }
+  };
+
+  return (
+    <BudgetContext.Provider value={{
+      // Data
+      transactions,
+      categories,
+      accounts,
+      balanceSnapshots,
+      budgets,
+      savingsGoals,
+      debts,
+      debtPayments,
+      
+      // Transactions
+      addTransaction,
+      updateTransaction,
+      deleteTransaction,
+      generateRecurringTransactions,
+      getScheduledTransactions,
+      getProjectedRecurringTransactions,
+      
+      // Categories
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      reorderCategories,
+      
+      // Accounts
+      addAccount,
+      updateAccount,
+      deleteAccount,
+      transferBetweenAccounts,
+      
+      // Budgets
+      setBudget,
+      deleteBudget,
+      
+      // Savings Goals
+      addSavingsGoal,
+      updateSavingsGoal,
+      deleteSavingsGoal,
+      contributeToGoal,
+      
+      // Debts
+      addDebt,
+      updateDebt,
+      deleteDebt,
+      addDebtPayment,
+      
+      // Analytics
+      getFinancialSummary,
+      getCashFlowProjection,
+      getCalendarEvents,
+      
+      // Export
+      exportData,
+      
+      // Filters
+      currentPeriod,
+      setCurrentPeriod: (start: Date, end: Date) => setCurrentPeriod({ start, end }),
+      selectedAccountIds,
+      setSelectedAccountIds,
+      
+      // Simulated Events
+      simulatedEvents,
+      setSimulatedEvents,
+
+      // Household / Couple Management
+      householdConfig,
+      updateHouseholdConfig,
+      toggleTransactionShared,
+      toggleCategoryShared,
+      isTransactionShared,
+      ratioA,
+      ratioB,
+
+      // Physical Assets / Patrimoine matériel
+      assets,
+      addAsset,
+      updateAsset,
+      deleteAsset,
+      totalAssetsValue,
+
+      // Real Estate Plans / Projets Immobiliers (Persistance Supabase)
+      realEstatePlans,
+      saveRealEstatePlans,
+
+      // Investment Positions (PEA / CTO)
+      investmentPositions,
+      saveInvestmentPositions,
+      addInvestmentPosition,
+      updateInvestmentPosition,
+      deleteInvestmentPosition,
+
+      reloadAll,
+    }}>
+      {children}
+    </BudgetContext.Provider>
+  );
+};

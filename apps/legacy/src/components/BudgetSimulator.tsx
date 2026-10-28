@@ -1,0 +1,602 @@
+import React, { useState, useMemo } from 'react';
+import { Target, TrendingUp, AlertTriangle, Gauge, CheckCircle2, ChevronRight, Calculator, Plus, Minus, Euro, Info, Trash2, CalendarClock } from 'lucide-react';
+import { useBudget } from '../contexts/BudgetContext';
+import { SimulatedEvent } from '../types';
+
+const BudgetSimulator: React.FC = () => {
+  const { 
+    getCashFlowProjection, 
+    accounts, 
+    debts, 
+    budgets, 
+    categories, 
+    transactions,
+    simulatedEvents: events,
+    setSimulatedEvents,
+    assets,
+    realEstatePlans
+  } = useBudget();
+  
+  // Calculate initial savings balance
+  const initialSavingsBalance = useMemo(() => {
+    return accounts?.filter(a => a.type === 'savings').reduce((sum, a) => sum + a.balance, 0) || 0;
+  }, [accounts]);
+  
+  // Calculate baselines based on 6 months projection
+  const { baselineIncome, baselineFixed, baselineDebts, baselineSavings, baselineBudgets } = useMemo(() => {
+    const projections = getCashFlowProjection(6);
+    if (projections.length === 0) return { baselineIncome: 0, baselineFixed: 0, baselineDebts: 0, baselineSavings: 0, baselineBudgets: 0 };
+    
+    return {
+      baselineIncome: Math.round(projections.reduce((sum, p) => sum + p.income, 0) / projections.length),
+      baselineFixed: Math.round(projections.reduce((sum, p) => sum + p.baseExpenses, 0) / projections.length),
+      baselineDebts: Math.round(projections.reduce((sum, p) => sum + p.debtPayments, 0) / projections.length),
+      baselineSavings: Math.round(projections.reduce((sum, p) => sum + p.savings + p.transfersOut, 0) / projections.length),
+      baselineBudgets: Math.round(projections.reduce((sum, p) => sum + p.budgetReserve, 0) / projections.length)
+    };
+  }, [getCashFlowProjection]);
+
+  // Simulator States
+  const [simIncome, setSimIncome] = useState(baselineIncome.toString());
+  const [simFixed, setSimFixed] = useState(baselineFixed.toString());
+  const [simDebts, setSimDebts] = useState(baselineDebts.toString());
+  const [simBudgets, setSimBudgets] = useState(baselineBudgets.toString());
+  const [simSavings, setSimSavings] = useState(baselineSavings.toString());
+  
+  const currentIncome = parseFloat(simIncome) || 0;
+  const currentFixed = parseFloat(simFixed) || 0;
+  const currentDebts = parseFloat(simDebts) || 0;
+  const currentBudgets = parseFloat(simBudgets) || 0;
+  const currentSavings = parseFloat(simSavings) || 0;
+
+  const addEvent = () => {
+    setSimulatedEvents([...events, {
+      id: Date.now().toString(),
+      date: new Date().toISOString().substring(0, 7),
+      type: 'income',
+      newValue: ''
+    }]);
+  };
+  
+  const updateEvent = (id: string, updates: Partial<SimulatedEvent>) => {
+    setSimulatedEvents(events.map(e => e.id === id ? { ...e, ...updates } : e));
+  };
+  
+  const removeEvent = (id: string) => {
+    setSimulatedEvents(events.filter(e => e.id !== id));
+  };
+
+  const getDebtsTooltip = () => debts.filter(d => d.isActive && d.remainingAmount > 0).map(d => `${d.name}: ${d.minimumPayment}€`).join('\n') || 'Aucune dette active';
+  const getBudgetsTooltip = () => budgets.filter(b => b.isActive).map(b => `${categories.find(c => c.id === b.categoryId)?.name || 'Budget'}: ${b.amount}€`).join('\n') || 'Aucun budget actif';
+  const getIncomeTooltip = () => transactions.filter(t => t.isRecurring && t.type === 'income').map(t => `${t.description}: ${t.amount}€`).join('\n') || 'Moyenne sur 6 mois';
+  const getFixedTooltip = () => transactions.filter(t => t.isRecurring && (t.type === 'expense' || t.type === 'bill')).map(t => `${t.description}: ${t.amount}€`).join('\n') || 'Moyenne sur 6 mois';
+  const getSavingsTooltip = () => transactions.filter(t => t.isRecurring && t.type === 'transfer' && !t.isExcludedFromReports).map(t => `${t.description}: ${t.amount}€`).join('\n') || 'Moyenne sur 6 mois';
+
+  const totalExpenses = currentFixed + currentDebts + currentSavings + currentBudgets;
+  const surplus = currentIncome - totalExpenses;
+  const marginPercent = currentIncome > 0 ? (surplus / currentIncome) * 100 : 0;
+  
+  // Helper to detect if an asset is in the future (like planned house)
+  const isFutureAsset = (asset: any): boolean => {
+    if (asset?.isPlanned) return true;
+    if (!asset?.purchaseDate) return false;
+    try {
+      const pDate = new Date(asset.purchaseDate);
+      const now = new Date();
+      return (pDate.getFullYear() > now.getFullYear()) || 
+             (pDate.getFullYear() === now.getFullYear() && pDate.getMonth() > now.getMonth());
+    } catch {
+      return false;
+    }
+  };
+
+  // Helper to detect if a debt starts in the future (like planned mortgage)
+  const isFutureDebt = (debt: any): boolean => {
+    if (!debt?.dueDate) return false;
+    try {
+      const dDate = new Date(debt.dueDate);
+      const now = new Date();
+      return (dDate.getFullYear() > now.getFullYear()) || 
+             (dDate.getFullYear() === now.getFullYear() && dDate.getMonth() > now.getMonth());
+    } catch {
+      return false;
+    }
+  };
+
+  // Active planned real estate project
+  const activePlan = useMemo(() => {
+    if (realEstatePlans && realEstatePlans.length > 0 && realEstatePlans[0].propertyPrice > 0) {
+      return realEstatePlans[0];
+    }
+    return null;
+  }, [realEstatePlans]);
+
+  // Starting net equity for currently owned physical assets
+  const initialCurrentAssetsNet = useMemo(() => {
+    const currentAssetsVal = (assets || [])
+      .filter(a => !isFutureAsset(a))
+      .reduce((sum, a) => sum + (Number(a.currentValue) || 0), 0);
+    const currentDebtsVal = (debts || [])
+      .filter(d => d.isActive && !isFutureDebt(d))
+      .reduce((sum, d) => sum + (Number(d.remainingAmount) || 0), 0);
+    return Math.max(0, currentAssetsVal - currentDebtsVal);
+  }, [assets, debts]);
+
+  // Starting liquid accounts (checking + savings + investments)
+  const initialLiquidCash = useMemo(() => {
+    return (accounts || [])
+      .filter(a => a.isActive)
+      .reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  }, [accounts]);
+
+  // Calculate true projections integrating realistic cash flows, future events & real estate equity
+  const yearlyProjections = useMemo(() => {
+    const trueProjections: any[] = [];
+    const now = new Date();
+
+    let runningLiquid = initialLiquidCash;
+    let runningCarEquity = initialCurrentAssetsNet;
+    let housePurchased = false;
+    let remainingMortgage = 0;
+
+    // Real estate parameters
+    const targetDateStr = activePlan?.targetDate || '2029-03';
+    const propertyPrice = activePlan?.propertyPrice || 0;
+    const totalApport = (activePlan?.buyerAContribution || 0) + (activePlan?.buyerBContribution || 0);
+    const arthurApport = activePlan?.buyerAContribution || totalApport || 0;
+    const totalProjectCost = propertyPrice + (activePlan?.notaryFeesAmount || 0) + (activePlan?.renovationBudget || 0) + (activePlan?.bankGuaranteeFees || 0);
+    const initialMortgageTotal = Math.max(0, totalProjectCost - totalApport);
+
+    // Compute standard monthly mortgage payment for loan duration
+    const loanDurationMonths = (activePlan?.mainLoanDurationYears || 25) * 12;
+    const loanInterestRate = activePlan?.mainLoanInterestRate || 3.5;
+    const monthlyRate = loanInterestRate / 100 / 12;
+    const standardMonthlyMortgage = loanDurationMonths > 0 && initialMortgageTotal > 0
+      ? (monthlyRate > 0 
+          ? (initialMortgageTotal * (monthlyRate * Math.pow(1 + monthlyRate, loanDurationMonths))) / (Math.pow(1 + monthlyRate, loanDurationMonths) - 1)
+          : initialMortgageTotal / loanDurationMonths)
+      : 0;
+
+    // Arthur's share of mortgage
+    const arthurRatio = activePlan?.customMonthlyRatioA 
+      ? activePlan.customMonthlyRatioA / 100 
+      : (activePlan && (activePlan.buyerAIncome + activePlan.buyerBIncome > 0)
+          ? activePlan.buyerAIncome / (activePlan.buyerAIncome + activePlan.buyerBIncome)
+          : 0.58);
+    const arthurMonthlyMortgage = Math.round(standardMonthlyMortgage * arthurRatio);
+
+    let monthIncome = currentIncome;
+    let monthFixed = currentFixed;
+    let monthDebts = currentDebts;
+    let monthBudgets = currentBudgets;
+    let monthSavings = currentSavings;
+
+    const parseEventValue = (input: string, currentValue: number): number => {
+      const trimmed = (input || '').trim();
+      if (!trimmed) return currentValue; 
+      
+      if (trimmed.endsWith('%')) {
+        const percent = parseFloat(trimmed.slice(0, -1));
+        if (!isNaN(percent)) {
+          if (trimmed.startsWith('+') || trimmed.startsWith('-')) {
+            return currentValue * (1 + percent / 100);
+          }
+          return currentValue * (percent / 100);
+        }
+      }
+      
+      if (trimmed.startsWith('+') || trimmed.startsWith('-')) {
+        const val = parseFloat(trimmed);
+        if (!isNaN(val)) return currentValue + val;
+      }
+      
+      const absoluteVal = parseFloat(trimmed);
+      return isNaN(absoluteVal) ? currentValue : absoluteVal;
+    };
+
+    for (let i = 0; i < 180; i++) { // 15 years = 180 months
+      const monthDate = new Date(now.getFullYear(), now.getMonth() + i + 1, 1);
+      const monthKey = monthDate.toISOString().substring(0, 7);
+
+      // 1. Process simulated events for this exact month
+      events.forEach(e => {
+        if (e.date === monthKey) {
+          if (e.type === 'income') monthIncome = parseEventValue(e.newValue, monthIncome);
+          if (e.type === 'fixed') monthFixed = parseEventValue(e.newValue, monthFixed);
+          if (e.type === 'debts') monthDebts = parseEventValue(e.newValue, monthDebts);
+          if (e.type === 'budgets') monthBudgets = parseEventValue(e.newValue, monthBudgets);
+          if (e.type === 'savings') monthSavings = parseEventValue(e.newValue, monthSavings);
+        }
+      });
+
+      // 2. Real estate acquisition milestone
+      if (activePlan && !housePurchased && monthKey >= targetDateStr) {
+        housePurchased = true;
+        // Apport is paid from liquid cash
+        runningLiquid = Math.max(0, runningLiquid - arthurApport);
+        remainingMortgage = initialMortgageTotal;
+
+        // If debts is 0 (e.g. from the 2027 car loan payoff event), add the mortgage payment
+        if (monthDebts < arthurMonthlyMortgage) {
+          monthDebts = arthurMonthlyMortgage;
+        }
+      }
+
+      // 3. Mortgage amortization: principal repayment builds home equity
+      let monthlyPrincipalPaid = 0;
+      if (housePurchased && remainingMortgage > 0) {
+        const monthlyInterest = remainingMortgage * monthlyRate;
+        monthlyPrincipalPaid = Math.max(0, standardMonthlyMortgage - monthlyInterest);
+        remainingMortgage = Math.max(0, remainingMortgage - monthlyPrincipalPaid);
+      }
+      const homeEquity = housePurchased ? Math.max(0, propertyPrice - remainingMortgage) : 0;
+
+      // 4. Monthly cash flows
+      const monthExpenses = monthFixed + monthDebts + monthBudgets;
+      const margin = monthIncome - monthExpenses - monthSavings;
+
+      // Arthur accumulates his scheduled monthly savings, plus any positive unspent margin
+      const netCashAdded = monthSavings + (margin > 0 ? margin : margin);
+      // Modest 1.5% annual yield on liquid cash
+      runningLiquid = Math.max(0, (runningLiquid + netCashAdded) * (1 + 0.015 / 12));
+
+      // 5. Existing car debt payoff after 2 years
+      if (i >= 24) {
+        runningCarEquity = (assets || [])
+          .filter(a => !isFutureAsset(a))
+          .reduce((sum, a) => sum + (Number(a.currentValue) || 0), 0);
+      }
+
+      // Year snapshot (every 12 months)
+      if ((i + 1) % 12 === 0) {
+        const totalPatrimony = Math.round(runningLiquid + homeEquity + runningCarEquity);
+        trueProjections.push({
+          yearOffset: (i + 1) / 12,
+          date: monthDate,
+          patrimony: totalPatrimony,
+          liquidPatrimony: Math.round(runningLiquid),
+          realEstateEquity: Math.round(homeEquity),
+          income: Math.round(monthIncome),
+          expenses: Math.round(monthExpenses),
+          savings: Math.round(monthSavings),
+          margin: Math.round(margin),
+          housePurchased
+        });
+      }
+    }
+
+    return trueProjections;
+  }, [accounts, assets, debts, realEstatePlans, activePlan, initialLiquidCash, initialCurrentAssetsNet, currentIncome, currentFixed, currentDebts, currentBudgets, currentSavings, events]);
+
+  const getStatus = (balance: number) => {
+    if (balance < 0) return { label: 'Déficit', Icon: AlertTriangle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-950/30' };
+    if (balance < 150) return { label: 'Tendu', Icon: Gauge, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' };
+    return { label: 'Excédent', Icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' };
+  };
+
+  const status = getStatus(surplus);
+
+  return (
+    <div className="w-full space-y-6">
+      <div className="flex items-center space-x-3">
+        <div className="p-2 bg-indigo-100 dark:bg-indigo-900/20 rounded-lg">
+          <Target className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
+        </div>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+          Simulateur de Budget
+        </h1>
+      </div>
+      
+      <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400">
+        Simulez l'impact d'un changement de salaire, de loyer ou de train de vie sur votre budget mensuel. Les valeurs de départ sont vos moyennes actuelles.
+      </p>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Colonne gauche : Paramètres + Événements futurs */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* Card 1: Paramètres simulés */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 space-y-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <Calculator className="h-5 w-5" />
+              Paramètres simulés
+            </h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Revenus nets mensuels (€) <Info className="h-4 w-4 text-gray-400 cursor-help" title={getIncomeTooltip()} />
+                </label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    value={simIncome} 
+                    onChange={e => setSimIncome(e.target.value)}
+                    className="w-full pl-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+                  />
+                  <Euro className="absolute right-3 top-2.5 h-5 w-5 text-gray-400" />
+                </div>
+                {currentIncome !== baselineIncome && (
+                  <p className={`text-xs mt-1 font-medium ${currentIncome > baselineIncome ? 'text-green-600' : 'text-red-600'}`}>
+                    {currentIncome > baselineIncome ? '+' : ''}{currentIncome - baselineIncome} € par rapport à aujourd'hui
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Charges fixes (Loyer, Assurances...) (€) <Info className="h-4 w-4 text-gray-400 cursor-help" title={getFixedTooltip()} />
+                </label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    value={simFixed} 
+                    onChange={e => setSimFixed(e.target.value)}
+                    className="w-full pl-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+                  />
+                  <Euro className="absolute right-3 top-2.5 h-5 w-5 text-gray-400" />
+                </div>
+                {currentFixed !== baselineFixed && (
+                  <p className={`text-xs mt-1 font-medium ${currentFixed < baselineFixed ? 'text-green-600' : 'text-red-600'}`}>
+                    {currentFixed > baselineFixed ? '+' : ''}{currentFixed - baselineFixed} € par rapport à aujourd'hui
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Remboursements de Dettes (€) <Info className="h-4 w-4 text-gray-400 cursor-help" title={getDebtsTooltip()} />
+                </label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    value={simDebts} 
+                    onChange={e => setSimDebts(e.target.value)}
+                    className="w-full pl-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+                  />
+                  <Euro className="absolute right-3 top-2.5 h-5 w-5 text-gray-400" />
+                </div>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Budgets de vie (Courses, Loisirs...) (€) <Info className="h-4 w-4 text-gray-400 cursor-help" title={getBudgetsTooltip()} />
+                </label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    value={simBudgets} 
+                    onChange={e => setSimBudgets(e.target.value)}
+                    className="w-full pl-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+                  />
+                  <Euro className="absolute right-3 top-2.5 h-5 w-5 text-gray-400" />
+                </div>
+              </div>
+              
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Épargne mensuelle (€) <Info className="h-4 w-4 text-gray-400 cursor-help" title={getSavingsTooltip()} />
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={simSavings}
+                    onChange={(e) => setSimSavings(e.target.value)}
+                    className="w-full pl-3 pr-10 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white"
+                  />
+                  <Euro className="absolute right-3 top-2.5 h-5 w-5 text-gray-400" />
+                </div>
+              </div>
+              
+              <button
+                onClick={() => {
+                  setSimIncome(baselineIncome.toString());
+                  setSimFixed(baselineFixed.toString());
+                  setSimDebts(baselineDebts.toString());
+                  setSimBudgets(baselineBudgets.toString());
+                  setSimSavings(baselineSavings.toString());
+                }}
+                className="text-sm text-indigo-600 dark:text-indigo-400 font-medium hover:underline"
+              >
+                Réinitialiser avec mes vraies moyennes
+              </button>
+            </div>
+          </div>
+
+          {/* Card 2: Événements futurs */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <CalendarClock className="h-5 w-5 text-indigo-500" />
+                Événements futurs
+              </h2>
+              <button onClick={addEvent} className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 px-3 py-1.5 rounded-lg flex items-center gap-1">
+                <Plus className="h-4 w-4" /> Ajouter
+              </button>
+            </div>
+            
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Définissez vos changements de vie pour ajuster dynamiquement les prévisions à long terme. Sauvegardés en base de données.
+            </p>
+
+            <div className="space-y-3">
+              {events.map(event => (
+                <div key={event.id} className="flex flex-col gap-3 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                  <div className="flex gap-3">
+                    <input 
+                      type="month" 
+                      value={event.date}
+                      onChange={e => updateEvent(event.id, { date: e.target.value })}
+                      className="flex-1 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
+                    />
+                    <select 
+                      value={event.type}
+                      onChange={e => updateEvent(event.id, { type: e.target.value as any })}
+                      className="flex-1 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white"
+                    >
+                      <option value="income">Revenus</option>
+                      <option value="fixed">Charges fixes</option>
+                      <option value="debts">Dettes</option>
+                      <option value="budgets">Budgets</option>
+                      <option value="savings">Épargne</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <div className="relative flex-1">
+                      <input 
+                        type="text"
+                        value={event.newValue}
+                        onChange={e => updateEvent(event.id, { newValue: e.target.value })}
+                        className="w-full pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                        placeholder="ex: 2500, +10%, -50..."
+                      />
+                      <Euro className="absolute right-3 top-2.5 h-4 w-4 text-gray-400" />
+                    </div>
+                    <button onClick={() => removeEvent(event.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-md shrink-0 transition-colors">
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {events.length === 0 && (
+                <div className="text-center py-6 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-500">
+                  Aucun événement futur programmé.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Colonne droite : Résultats */}
+        <div className="lg:col-span-7 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-4 sm:p-6 flex flex-col justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center justify-between">
+              Résultat Simulé
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold ${status.bg} ${status.color}`}>
+                <status.Icon className="h-4 w-4" />
+                {status.label}
+              </span>
+            </h2>
+            
+            <div className="flex flex-col items-center justify-center py-6 border-b border-gray-100 dark:border-gray-700">
+              <p className="text-sm text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wider mb-2">Reste à vivre (Marge mensuelle)</p>
+              <p className={`text-5xl font-bold ${surplus >= 0 ? 'text-gray-900 dark:text-white' : 'text-red-600 dark:text-red-400'}`}>
+                {surplus > 0 ? '+' : ''}{surplus.toLocaleString('fr-FR')} €
+              </p>
+              <p className="text-sm text-gray-500 mt-3">
+                Soit {marginPercent.toFixed(1)}% de vos revenus
+              </p>
+            </div>
+            
+            <div className="mt-6 space-y-4">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-600 dark:text-gray-400">Total des revenus</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400">{currentIncome.toLocaleString('fr-FR')} €</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-600 dark:text-gray-400">Total des sorties</span>
+                <span className="font-semibold text-red-600 dark:text-red-400">{totalExpenses.toLocaleString('fr-FR')} €</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 overflow-hidden flex">
+                <div className="bg-red-500 h-2.5" style={{ width: `${Math.min((currentFixed / currentIncome) * 100, 100)}%` }} title="Charges fixes"></div>
+                <div className="bg-orange-500 h-2.5" style={{ width: `${Math.min((currentDebts / currentIncome) * 100, 100)}%` }} title="Dettes"></div>
+                <div className="bg-amber-500 h-2.5" style={{ width: `${Math.min((currentBudgets / currentIncome) * 100, 100)}%` }} title="Budgets"></div>
+                <div className="bg-blue-500 h-2.5" style={{ width: `${Math.min((currentSavings / currentIncome) * 100, 100)}%` }} title="Epargne"></div>
+                <div className="bg-emerald-500 h-2.5" style={{ width: `${Math.max(marginPercent, 0)}%` }} title="Reste"></div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-gray-500 mt-2 justify-center">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Fixe</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500"></span> Dettes</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500"></span> Vie</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Épargne ({currentSavings}€)</span>
+                {marginPercent > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Marge</span>}
+              </div>
+            </div>
+          </div>
+          
+          {surplus > 0 ? (
+            <div className="mt-6 p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-sm text-indigo-800 dark:text-indigo-300">
+              💡 Avec cette simulation, vous pourriez épargner <strong>{(surplus * 12).toLocaleString('fr-FR')} €</strong> par an supplémentaires !
+            </div>
+          ) : (
+            <div className="mt-6 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg text-sm text-red-800 dark:text-red-300">
+              ⚠️ Attention, cette simulation génère un déficit de <strong>{Math.abs(surplus * 12).toLocaleString('fr-FR')} €</strong> par an. Vous devrez piocher dans vos réserves ou réduire vos budgets de vie.
+            </div>
+          )}
+          
+          <div className="mt-4 p-4 border border-gray-100 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Prévision du Patrimoine (avec vos transactions planifiées)</h3>
+              <div className="flex overflow-x-auto pb-4 pt-2 -mx-2 px-2 gap-3 snap-x snap-mandatory sm:grid sm:grid-cols-5 sm:overflow-visible sm:pb-0 sm:pt-0 sm:mx-0 sm:px-0 sm:snap-none hide-scrollbar">
+                {yearlyProjections.slice(0, 5).map((proj: any) => (
+                  <div key={proj.yearOffset} className="snap-center shrink-0 w-[140px] sm:w-auto bg-gradient-to-br from-white to-blue-50/50 dark:from-gray-800 dark:to-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/50 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center justify-center text-center relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 dark:bg-blue-400/5 rounded-bl-full"></div>
+                    <p className="text-xs font-semibold text-blue-800/70 dark:text-blue-300/70 uppercase tracking-wider mb-2">Dans {proj.yearOffset} an{proj.yearOffset > 1 ? 's' : ''}</p>
+                    <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{proj.patrimony.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</p>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
+                      {proj.realEstateEquity > 0 
+                        ? `dont ${(proj.realEstateEquity / 1000).toFixed(0)}k€ immo` 
+                        : `Épargne & liquidités`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            <p className="text-xs text-gray-500 mt-3 italic">
+              * Inclut vos comptes réels, vos épargnes mensuelles, l'amortissement du crédit immobilier et la marge budgétaire.
+            </p>
+          </div>
+          
+          {yearlyProjections.length > 5 && (
+            <div className="mt-6 p-4 border border-gray-100 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <CalendarClock className="h-5 w-5 text-indigo-500" />
+                Évolution Détaillée (15 ans)
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Année</th>
+                      <th className="px-4 py-3 font-medium">Revenus (Mensuel)</th>
+                      <th className="px-4 py-3 font-medium">Dépenses (Mensuel)</th>
+                      <th className="px-4 py-3 font-medium">Épargne (Mensuel)</th>
+                      <th className="px-4 py-3 font-medium">Marge (Mensuelle)</th>
+                      <th className="px-4 py-3 font-medium text-right text-indigo-600 dark:text-indigo-400">Patrimoine Estimé</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {yearlyProjections.map((proj: any) => (
+                      <tr key={proj.yearOffset} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                          {proj.date.getFullYear()} <span className="text-xs text-gray-400 font-normal ml-1">(+{proj.yearOffset} an{proj.yearOffset > 1 ? 's' : ''})</span>
+                        </td>
+                        <td className="px-4 py-3 text-green-600 dark:text-green-400 font-medium">+{proj.income.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</td>
+                        <td className="px-4 py-3 text-red-500 dark:text-red-400 font-medium">-{proj.expenses.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</td>
+                        <td className="px-4 py-3 text-blue-500 dark:text-blue-400">{proj.savings.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</td>
+                        <td className={`px-4 py-3 font-medium ${proj.margin > 0 ? 'text-emerald-600 dark:text-emerald-400' : proj.margin < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                          {proj.margin > 0 ? '+' : ''}{proj.margin.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-gray-900 dark:text-white">
+                          <div>{proj.patrimony.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €</div>
+                          {proj.realEstateEquity > 0 ? (
+                            <div className="text-[11px] font-normal text-indigo-600 dark:text-indigo-400">
+                              dont {proj.realEstateEquity.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} € equity immo
+                            </div>
+                          ) : (
+                            <div className="text-[11px] font-normal text-gray-400">
+                              100% liquidités & épargne
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default BudgetSimulator;

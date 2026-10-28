@@ -1,0 +1,633 @@
+import React, { useState } from 'react';
+import { addDays, addMonths, addWeeks, addYears, format, startOfDay, startOfYear, endOfYear } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { useBudget } from '../contexts/BudgetContext';
+import { useAuth } from '../contexts/AuthContext';
+import { getCustomMonthPeriod } from '../utils/dateUtils';
+import { Transaction } from '../types';
+
+interface BudgetProgressProps {
+  viewMode?: 'monthly' | 'yearly';
+}
+
+const BudgetProgress: React.FC<BudgetProgressProps> = ({ viewMode = 'monthly' }) => {
+  const { transactions, categories, budgets, accounts, debts, selectedAccountIds, getCashFlowProjection, getProjectedRecurringTransactions } = useBudget();
+  const { user } = useAuth();
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  
+  const monthStartDay = user?.settings?.monthStartDay || 1;
+  const currentDate = new Date();
+  const customMonthPeriod = getCustomMonthPeriod(currentDate, monthStartDay);
+  const periodStart = viewMode === 'monthly' ? customMonthPeriod.start : startOfYear(currentDate);
+  const periodEnd = viewMode === 'monthly' ? customMonthPeriod.end : endOfYear(currentDate);
+  const today = startOfDay(currentDate);
+  const selectedAccountSet = new Set(selectedAccountIds);
+  const shouldIncludeAccount = (accountId: string) =>
+    selectedAccountIds.length === 0 || selectedAccountSet.has(accountId);
+  const spendingAccountIds = new Set(
+    accounts
+      .filter(account =>
+        account.isActive &&
+        account.type !== 'savings' &&
+        account.type !== 'investment' &&
+        account.type !== 'meal_voucher' &&
+        account.type !== 'crypto' &&
+        shouldIncludeAccount(account.id)
+      )
+      .map(account => account.id)
+  );
+  const currentAccountBalance = accounts
+    .filter(account => spendingAccountIds.has(account.id))
+    .reduce((sum, account) => sum + account.balance, 0);
+  const getTransactionImpact = (transaction: Transaction) => {
+    const isSpendingAccountTransaction = spendingAccountIds.has(transaction.accountId);
+
+    if (transaction.type === 'transfer') {
+      if (!isSpendingAccountTransaction) return 0;
+      return transaction.description.toLowerCase().includes('depuis')
+        ? transaction.amount
+        : -transaction.amount;
+    }
+
+    if (!isSpendingAccountTransaction) return 0;
+    if (transaction.type === 'income' || transaction.type === 'refund') return transaction.amount;
+    if (transaction.type === 'expense' || transaction.type === 'bill' || transaction.type === 'savings') return -transaction.amount;
+    return 0;
+  };
+  const getNextOccurrenceDate = (date: Date, transaction: Transaction) => {
+    const pattern = transaction.recurringPattern;
+    if (!pattern) return null;
+
+    switch (pattern.frequency) {
+      case 'daily':
+        return addDays(date, pattern.interval);
+      case 'weekly':
+        return addWeeks(date, pattern.interval);
+      case 'monthly':
+        return addMonths(date, pattern.interval);
+      case 'quarterly':
+        return addMonths(date, pattern.interval * 3);
+      case 'yearly':
+        return addYears(date, pattern.interval);
+      default:
+        return addMonths(date, 1);
+    }
+  };
+  const addImpactToProjection = (
+    projection: { incoming: number; deductions: number },
+    impact: number
+  ) => impact > 0
+    ? { ...projection, incoming: projection.incoming + impact }
+    : { ...projection, deductions: projection.deductions + Math.abs(impact) };
+  const upcomingTransactionProjection = transactions.reduce((projection, transaction) => {
+    const impact = getTransactionImpact(transaction);
+    if (impact === 0) return projection;
+
+    if (!transaction.isRecurring || !transaction.recurringPattern?.isActive) {
+      const transactionDate = startOfDay(transaction.date);
+      const isUpcomingScheduled =
+        transaction.status === 'scheduled' &&
+        transactionDate >= today &&
+        transactionDate <= periodEnd;
+      const isPendingInPeriod =
+        transaction.status === 'pending' &&
+        transactionDate >= periodStart &&
+        transactionDate <= periodEnd;
+      if (
+        isUpcomingScheduled ||
+        isPendingInPeriod
+      ) {
+        return addImpactToProjection(projection, impact);
+      }
+      return projection;
+    }
+
+    const pattern = transaction.recurringPattern;
+    let nextDate = startOfDay(pattern.nextDate);
+    let occurrenceCount = pattern.currentOccurrence || 0;
+    let recurringProjection = projection;
+
+    while (nextDate <= periodEnd) {
+      const hasReachedEndDate = pattern.endDate && nextDate > startOfDay(pattern.endDate);
+      const hasReachedMaxOccurrences = pattern.maxOccurrences && occurrenceCount >= pattern.maxOccurrences;
+      if (hasReachedEndDate || hasReachedMaxOccurrences) break;
+
+      if (nextDate >= today) {
+        recurringProjection = addImpactToProjection(recurringProjection, impact);
+      }
+
+      const followingDate = getNextOccurrenceDate(nextDate, transaction);
+      if (!followingDate || followingDate <= nextDate) break;
+      nextDate = startOfDay(followingDate);
+      occurrenceCount += 1;
+    }
+
+    return recurringProjection;
+  }, { incoming: 0, deductions: 0 });
+  const upcomingDebtPayments = debts
+    .filter(debt =>
+      debt.isActive &&
+      spendingAccountIds.has(debt.accountId) &&
+      startOfDay(debt.dueDate) >= today &&
+      startOfDay(debt.dueDate) <= periodEnd
+    )
+    .reduce((sum, debt) => sum + debt.minimumPayment, 0);
+  const monthEndProjection = viewMode === 'monthly'
+    ? getCashFlowProjection(1, customMonthPeriod.start, monthStartDay)[0]
+    : getCashFlowProjection(1)[0];
+  const projectedCurrentBalance =
+    monthEndProjection?.projectedBalance ??
+    (
+      currentAccountBalance +
+      upcomingTransactionProjection.incoming -
+      upcomingTransactionProjection.deductions -
+      upcomingDebtPayments
+    );
+  
+  const currentPeriodBudgets = budgets.filter(
+    b => b.period === viewMode && b.isActive &&
+         b.startDate <= periodEnd && (!b.endDate || b.endDate >= periodStart)
+  );
+
+  const getCompletedExpensesForCategory = (categoryId: string) => transactions
+    .filter(t =>
+      t.categoryId === categoryId &&
+      t.type === 'expense' &&
+      t.status === 'completed' &&
+      categories.find(category => category.id === t.categoryId)?.excludeFromReports !== true &&
+      t.date >= periodStart &&
+      t.date <= periodEnd &&
+      (selectedAccountIds.length === 0 || selectedAccountIds.includes(t.accountId))
+    )
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const plannedTransactionKey = (transaction: Transaction) => [
+    transaction.accountId,
+    transaction.categoryId,
+    transaction.type,
+    transaction.amount,
+    transaction.description.trim().toLowerCase(),
+    transaction.date.toISOString().split('T')[0],
+  ].join('|');
+
+  const completedPeriodTransactionKeys = new Set(
+    transactions
+      .filter(t =>
+        !t.isRecurring &&
+        t.status === 'completed' &&
+        t.date >= periodStart &&
+        t.date <= periodEnd
+      )
+      .map(plannedTransactionKey)
+  );
+
+  const actualPeriodTransactionKeys = new Set(
+    transactions
+      .filter(t =>
+        !t.isRecurring &&
+        t.date >= periodStart &&
+        t.date <= periodEnd &&
+        (t.status === 'completed' || t.status === 'scheduled' || t.status === 'pending')
+      )
+      .map(plannedTransactionKey)
+  );
+
+  const projectedRecurringExpenses = getProjectedRecurringTransactions(periodStart, periodEnd)
+    .filter(t =>
+      t.type === 'expense' &&
+      categories.find(category => category.id === t.categoryId)?.excludeFromReports !== true &&
+      spendingAccountIds.has(t.accountId) &&
+      t.date >= today &&
+      !actualPeriodTransactionKeys.has(plannedTransactionKey(t))
+    );
+
+  const getPlannedExpensesForCategory = (categoryId: string) => transactions
+    .filter(t =>
+      !t.isRecurring &&
+      t.categoryId === categoryId &&
+      t.type === 'expense' &&
+      (t.status === 'scheduled' || t.status === 'pending') &&
+      !completedPeriodTransactionKeys.has(plannedTransactionKey(t)) &&
+      categories.find(category => category.id === t.categoryId)?.excludeFromReports !== true &&
+      spendingAccountIds.has(t.accountId) &&
+      (t.status === 'pending' || t.date >= today) &&
+      t.date <= periodEnd
+    )
+    .concat(projectedRecurringExpenses.filter(t => t.categoryId === categoryId))
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  const isDebtLikeCategory = (categoryId: string) => {
+    const category = categories.find(item => item.id === categoryId);
+    const name = category?.name.toLowerCase() || '';
+    return category?.type === 'debt' || name.includes('prêt') || name.includes('credit') || name.includes('crédit');
+  };
+
+  const isDebtAlreadyRepresented = (debtCategoryId: string, debtName: string, debtAmount: number, dueDate: Date) => {
+    const normalizedDebtName = debtName.trim().toLowerCase();
+    const visibleTransactions = transactions
+      .filter(transaction =>
+        !transaction.isRecurring &&
+        transaction.date >= periodStart &&
+        transaction.date <= periodEnd &&
+        (transaction.status === 'completed' || transaction.status === 'scheduled' || transaction.status === 'pending')
+      )
+      .concat(projectedRecurringExpenses);
+
+    return visibleTransactions.some(transaction => {
+      if (transaction.type !== 'expense' && transaction.type !== 'bill') return false;
+      if (!spendingAccountIds.has(transaction.accountId)) return false;
+      if (Math.abs(transaction.amount - debtAmount) > 0.01) return false;
+      if (Math.abs(startOfDay(transaction.date).getTime() - dueDate.getTime()) > 5 * 24 * 60 * 60 * 1000) return false;
+
+      const description = transaction.description.toLowerCase();
+      return (
+        transaction.categoryId === debtCategoryId ||
+        isDebtLikeCategory(transaction.categoryId) ||
+        (normalizedDebtName.length > 0 && (description.includes(normalizedDebtName) || normalizedDebtName.includes(description)))
+      );
+    });
+  };
+
+  const projectedDebtExpenses = debts
+    .filter(debt =>
+      debt.isActive &&
+      debt.minimumPayment > 0 &&
+      debt.remainingAmount > 0 &&
+      spendingAccountIds.has(debt.accountId)
+    )
+    .flatMap(debt => {
+      const fallbackCategory = categories.find(category => category.type === 'debt');
+      const categoryId = debt.categoryId || fallbackCategory?.id || '';
+      if (!categoryId) return [];
+
+      const payments: { categoryId: string; amount: number; date: Date; debtName: string }[] = [];
+      let dueDate = startOfDay(debt.dueDate);
+      while (dueDate < periodStart) {
+        dueDate = startOfDay(addMonths(dueDate, 1));
+      }
+
+      while (dueDate <= periodEnd) {
+        const amount = Math.min(debt.minimumPayment, debt.remainingAmount);
+        if (
+          dueDate >= today &&
+          !isDebtAlreadyRepresented(categoryId, debt.name, amount, dueDate)
+        ) {
+          payments.push({
+            categoryId,
+            amount,
+            date: dueDate,
+            debtName: debt.name,
+          });
+        }
+
+        dueDate = startOfDay(addMonths(dueDate, 1));
+      }
+
+      return payments;
+    });
+
+  const getProjectedDebtExpensesForCategory = (categoryId: string) =>
+    projectedDebtExpenses
+      .filter(payment => payment.categoryId === categoryId)
+      .reduce((sum, payment) => sum + payment.amount, 0);
+
+  const budgetProgress = currentPeriodBudgets.map(budget => {
+    const category = categories.find(c => c.id === budget.categoryId);
+    if (category?.excludeFromReports) return null;
+    const spent = getCompletedExpensesForCategory(budget.categoryId);
+    const planned = getPlannedExpensesForCategory(budget.categoryId) + getProjectedDebtExpensesForCategory(budget.categoryId);
+    const committed = spent + planned;
+    
+    const percentage = budget.amount > 0 ? (committed / budget.amount) * 100 : 0;
+    
+    return {
+      categoryId: budget.categoryId,
+      category: category?.name || 'Catégorie inconnue',
+      color: category?.color || '#6B7280',
+      budgeted: budget.amount,
+      spent,
+      planned,
+      committed,
+      percentage: Math.min(percentage, 100),
+      isOverBudget: committed > budget.amount,
+      isUnplanned: false,
+    };
+  }).filter((item): item is NonNullable<typeof item> => item !== null);
+
+  // Add categories with default budgets but no explicit budget set
+  const categoriesWithDefaultBudgets = categories.filter(c => 
+    c.type === 'expense' && 
+    !c.excludeFromReports &&
+    c.budget && 
+    !currentPeriodBudgets.some(b => b.categoryId === c.id)
+  );
+
+  categoriesWithDefaultBudgets.forEach(category => {
+    const spent = getCompletedExpensesForCategory(category.id);
+    const planned = getPlannedExpensesForCategory(category.id) + getProjectedDebtExpensesForCategory(category.id);
+    const committed = spent + planned;
+    if (isDebtLikeCategory(category.id) && committed === 0) return;
+    
+    const budgetAmount = category.budget || 0;
+    const percentage = budgetAmount > 0 ? (committed / budgetAmount) * 100 : 0;
+    
+    budgetProgress.push({
+      categoryId: category.id,
+      category: category.name,
+      color: category.color,
+      budgeted: budgetAmount,
+      spent,
+      planned,
+      committed,
+      percentage: Math.min(percentage, 100),
+      isOverBudget: committed > budgetAmount,
+      isUnplanned: false,
+    });
+  });
+
+  const budgetedCategoryIds = new Set(budgetProgress.map(item => item.categoryId));
+  const unplannedCategories = categories
+    .filter(category =>
+      category.type === 'expense' &&
+      !category.excludeFromReports &&
+      !budgetedCategoryIds.has(category.id)
+    )
+    .map(category => {
+      const spent = getCompletedExpensesForCategory(category.id);
+      const planned = getPlannedExpensesForCategory(category.id) + getProjectedDebtExpensesForCategory(category.id);
+      const committed = spent + planned;
+
+      return {
+        categoryId: category.id,
+        category: category.name,
+        color: category.color,
+        budgeted: 0,
+        spent,
+        planned,
+        committed,
+        percentage: committed > 0 ? 100 : 0,
+        isOverBudget: committed > 0,
+        isUnplanned: true,
+      };
+    })
+    .filter(item => item.committed > 0);
+
+  budgetProgress.push(...unplannedCategories);
+  budgetProgress.sort((a, b) => {
+    if (a.isUnplanned !== b.isUnplanned) return a.isUnplanned ? -1 : 1;
+    return b.committed - a.committed;
+  });
+
+  const totalBudgeted = budgetProgress.reduce((sum, item) => sum + item.budgeted, 0);
+  const totalPlanned = budgetProgress.reduce((sum, item) => sum + item.planned, 0);
+  const totalCommitted = budgetProgress.reduce((sum, item) => sum + item.committed, 0);
+  const totalUnplannedSpent = budgetProgress
+    .filter(item => item.isUnplanned)
+    .reduce((sum, item) => sum + item.committed, 0);
+  const remainingBudgets = budgetProgress.reduce(
+    (sum, item) => sum + Math.max(item.budgeted - item.committed, 0),
+    0
+  );
+  const finalProjectedAfterBudgets = projectedCurrentBalance;
+  const totalOverBudgetAmount = budgetProgress
+    .filter(item => !item.isUnplanned)
+    .reduce((sum, item) => sum + Math.max(item.committed - item.budgeted, 0), 0);
+  const totalBudgetGap = totalCommitted - totalBudgeted;
+  const pressureToCover = totalOverBudgetAmount + totalUnplannedSpent;
+  const uncoveredAfterReallocation = Math.max(pressureToCover - remainingBudgets, 0);
+  const budgetPlanIsOver = totalBudgetGap > 0;
+  const budgetActionMessage = budgetPlanIsOver
+    ? projectedCurrentBalance >= 0
+      ? `Ton plan de budget dépasse de ${totalBudgetGap.toFixed(2)} €. Le reste estimé fin du mois tient déjà compte des budgets restants. Tu peux réallouer ${Math.min(remainingBudgets, pressureToCover).toFixed(2)} €, augmenter certains budgets, ou garder une partie pour l'épargne.`
+      : `Ton plan de budget dépasse de ${totalBudgetGap.toFixed(2)} € et le solde prévu passe négatif. Il faut réduire ou décaler au moins ${Math.abs(projectedCurrentBalance).toFixed(2)} € de sorties.`
+    : projectedCurrentBalance > 0
+      ? `Ton plan tient avec ${Math.abs(totalBudgetGap).toFixed(2)} € de marge budgétaire. Le reste estimé fin du mois tient déjà compte des budgets restants.`
+      : `Tes budgets tiennent sur le papier, mais le solde prévu est négatif. Le blocage vient plutôt de la trésorerie disponible que des budgets.`;
+  const selectedBudgetCategory = selectedCategoryId
+    ? categories.find(category => category.id === selectedCategoryId)
+    : null;
+  const selectedTransactions = selectedCategoryId
+    ? transactions
+        .filter(transaction =>
+          !transaction.isRecurring &&
+          transaction.categoryId === selectedCategoryId &&
+          (transaction.type === 'expense' || transaction.type === 'bill') &&
+          (transaction.status === 'completed' || transaction.status === 'scheduled' || transaction.status === 'pending') &&
+          transaction.date >= periodStart &&
+          transaction.date <= periodEnd &&
+          (selectedAccountIds.length === 0 || selectedAccountIds.includes(transaction.accountId))
+        )
+        .concat(
+          projectedRecurringExpenses.filter(t =>
+            t.categoryId === selectedCategoryId &&
+            t.date >= periodStart &&
+            t.date <= periodEnd
+          )
+        )
+        .concat(
+          projectedDebtExpenses
+            .filter(d => d.categoryId === selectedCategoryId)
+            .map(d => ({
+              id: `projected-debt-${d.debtName}-${d.date.getTime()}`,
+              description: `Dette: ${d.debtName}`,
+              amount: d.amount,
+              date: d.date,
+              type: 'expense' as const,
+              status: 'scheduled' as const,
+              categoryId: d.categoryId,
+              accountId: spendingAccountIds.values().next().value || '',
+              isRecurring: false,
+            }))
+        )
+        .sort((a, b) => b.date.getTime() - a.date.getTime())
+    : [];
+
+  return (
+    <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-card dark:border-slate-800/80 dark:bg-slate-900 sm:p-6">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+          Suivi des budgets
+        </h3>
+        <div className="text-right">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {viewMode === 'monthly' ? 'Période' : 'Cette année'}
+          </p>
+          {viewMode === 'monthly' && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {format(periodStart, 'dd MMM', { locale: fr })} - {format(periodEnd, 'dd MMM', { locale: fr })}
+            </p>
+          )}
+          <p className="text-xl font-bold text-slate-900 dark:text-white">
+            {totalCommitted.toFixed(2)} € / {totalBudgeted.toFixed(2)} €
+          </p>
+          {totalPlanned > 0 && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              dont {totalPlanned.toFixed(2)} € à venir
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+          <p className="text-xs text-slate-500 dark:text-slate-400">Reste estimé fin du mois</p>
+          <p className={`mt-0.5 text-lg font-semibold ${projectedCurrentBalance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+            {projectedCurrentBalance.toFixed(2)} €
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 leading-tight">Même référence que la carte du haut.</p>
+        </div>
+
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+          <p className="text-xs text-slate-500 dark:text-slate-400">Écart au plan</p>
+          <p className={`mt-0.5 text-lg font-semibold ${budgetPlanIsOver ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+            {budgetPlanIsOver ? '-' : '+'}{Math.abs(totalBudgetGap).toFixed(2)} €
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 leading-tight">
+            {budgetPlanIsOver ? 'Dépassements et hors budget inclus.' : 'Marge restante sur tes budgets.'}
+          </p>
+        </div>
+
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+          <p className="text-xs text-slate-500 dark:text-slate-400">Réallocation possible</p>
+          <p className="mt-0.5 text-lg font-semibold text-blue-600 dark:text-blue-400">
+            {remainingBudgets.toFixed(2)} €
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 leading-tight">Budgets encore libres ailleurs.</p>
+        </div>
+      </div>
+
+
+      
+      {budgetProgress.length > 0 ? (
+        <div className="space-y-2">
+          {budgetProgress.map((item, index) => (
+            <button
+              key={index}
+              type="button"
+              onClick={() => setSelectedCategoryId(item.categoryId)}
+              className="block w-full space-y-1.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-slate-700/50"
+            >
+              <div className="flex justify-between items-center">
+                <div className="flex items-center space-x-2">
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {item.category}
+                  </span>
+                  {item.isUnplanned && (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                      Non prévu
+                    </span>
+                  )}
+                </div>
+                <span className={`text-sm font-medium ${
+                  item.isOverBudget ? 'text-red-600 dark:text-red-400' : 'text-slate-600 dark:text-slate-400'
+                }`}>
+                  {item.isUnplanned
+                    ? `${item.committed.toFixed(2)} €`
+                    : `${item.committed.toFixed(2)} € / ${item.budgeted.toFixed(2)} €`
+                  }
+                </span>
+              </div>
+              
+              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    item.isOverBudget 
+                      ? 'bg-red-500' 
+                      : item.percentage > 80 
+                        ? 'bg-orange-500' 
+                        : 'bg-green-500'
+                  }`}
+                  style={{ width: `${item.percentage}%` }}
+                />
+              </div>
+              
+              <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                <span>
+                  {item.percentage.toFixed(1)}% engagé
+                  {item.planned > 0 ? ` · ${item.planned.toFixed(2)} € à venir` : ''}
+                </span>
+                {item.isUnplanned ? (
+                  <span className="text-red-600 dark:text-red-400 font-medium">
+                    Hors budget
+                  </span>
+                ) : item.isOverBudget ? (
+                  <span className="text-red-600 dark:text-red-400 font-medium">
+                    Dépassement de {(item.committed - item.budgeted).toFixed(2)} €
+                  </span>
+                ) : (
+                  <span className="text-green-600 dark:text-green-400">
+                    Reste {(item.budgeted - item.committed).toFixed(2)} €
+                  </span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center text-slate-500 dark:text-slate-400 py-8">
+          <p className="text-lg mb-2">Aucun budget défini</p>
+          <p className="text-sm">Définissez des budgets dans les paramètres pour suivre vos dépenses</p>
+        </div>
+      )}
+
+      {selectedBudgetCategory && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-0 modal-overlay sm:items-center sm:p-4">
+          <div className="max-h-[92dvh] w-full modal-panel rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900 sm:max-w-2xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200/70 bg-gradient-to-b from-slate-50 to-white px-6 py-4 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950 dark:text-white">{selectedBudgetCategory.name}</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {selectedTransactions.length} dépense{selectedTransactions.length > 1 ? 's' : ''} sur la période
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCategoryId(null)}
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="Fermer"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="max-h-[calc(92dvh-5rem)] overflow-y-auto p-4 sm:p-6">
+              {selectedTransactions.length > 0 ? (
+                <div className="space-y-3">
+                  {selectedTransactions.map(transaction => {
+                    const account = accounts.find(item => item.id === transaction.accountId);
+                    return (
+                      <div key={transaction.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{transaction.description}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {format(transaction.date, 'dd MMM yyyy', { locale: fr })}
+                            {account ? ` - ${account.name}` : ''}
+                            {transaction.status === 'scheduled' ? ' - à venir' : ''}
+                            {transaction.status === 'pending' ? ' - en attente' : ''}
+                          </p>
+                        </div>
+                        <p className="ml-4 whitespace-nowrap text-sm font-semibold text-red-600 dark:text-red-400">
+                          -{transaction.amount.toFixed(2)} €
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="py-8 text-center text-slate-500 dark:text-slate-400">
+                  Aucune dépense sur cette période
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default BudgetProgress;

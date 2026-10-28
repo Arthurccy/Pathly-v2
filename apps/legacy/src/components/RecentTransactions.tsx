@@ -1,0 +1,719 @@
+import React, { useMemo, useState } from 'react';
+import { addMonths, endOfMonth, format, startOfDay } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import * as LucideIcons from 'lucide-react';
+import { useBudget } from '../contexts/BudgetContext';
+import type { Transaction, Debt } from '../types';
+
+const toDateInputValue = (date: Date) => date.toISOString().split('T')[0];
+
+const getTransactionDisplayImpact = (transaction: Transaction) => {
+  if (transaction.type === 'income' || transaction.type === 'refund' || transaction.type === 'savings_withdrawal') {
+    return transaction.amount;
+  }
+
+  if (transaction.type === 'transfer') {
+    return transaction.description.toLowerCase().includes('depuis')
+      ? transaction.amount
+      : -transaction.amount;
+  }
+
+  return -transaction.amount;
+};
+
+const isRentTransaction = (transaction: Transaction, categoryName?: string) => {
+  const description = transaction.description?.toLowerCase() || '';
+  const category = categoryName?.toLowerCase() || '';
+  return description.includes('loyer') || category.includes('loyer');
+};
+
+const buildProjectedDebtTransactions = (
+  debts: Debt[],
+  categories: ReturnType<typeof useBudget>['categories'],
+  projectionStart: Date,
+  projectionEnd: Date
+): Transaction[] => {
+  return debts
+    .filter(debt => debt.isActive && debt.minimumPayment > 0 && debt.remainingAmount > 0)
+    .flatMap(debt => {
+      const debtCategory = categories.find(category => category.id === debt.categoryId) || categories.find(category => category.type === 'debt');
+      const payments: Transaction[] = [];
+      let dueDate = startOfDay(debt.dueDate);
+
+      while (dueDate < projectionStart) {
+        dueDate = startOfDay(addMonths(dueDate, 1));
+      }
+
+      while (dueDate <= projectionEnd) {
+        payments.push({
+          id: `debt-${debt.id}-${toDateInputValue(dueDate)}`,
+          userId: debt.userId,
+          accountId: debt.accountId,
+          amount: Math.min(debt.minimumPayment, debt.remainingAmount),
+          description: `Dette: ${debt.name}`,
+          date: dueDate,
+          categoryId: debtCategory?.id || debt.categoryId || '',
+          type: 'expense',
+          status: 'scheduled',
+          isRecurring: false,
+          memo: 'Dette auto',
+          tags: ['debt', 'auto-debt-payment'],
+          transferToAccountId: undefined,
+          isChecked: false,
+          attachments: [],
+        });
+
+        dueDate = startOfDay(addMonths(dueDate, 1));
+      }
+
+      return payments;
+    });
+};
+
+interface RecentTransactionsProps {
+  limit?: number;
+  title?: string;
+  mode?: 'recent' | 'upcoming' | 'all';
+  periodStart?: Date;
+  periodEnd?: Date;
+  collapsible?: boolean;
+  initialLimit?: number;
+}
+
+const RecentTransactions: React.FC<RecentTransactionsProps> = ({
+  limit = 10,
+  title = 'Dernieres transactions',
+  mode = 'recent',
+  periodStart,
+  periodEnd,
+  collapsible = false,
+  initialLimit = 3,
+}) => {
+  const { transactions, categories, accounts, debts, addTransaction, updateTransaction, deleteTransaction, getProjectedRecurringTransactions, householdConfig, ratioA, ratioB } = useBudget();
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [showAll, setShowAll] = useState(!collapsible);
+  const [formData, setFormData] = useState({
+    amount: '',
+    description: '',
+    accountId: '',
+    categoryId: '',
+    type: 'expense' as 'expense' | 'income',
+    date: '',
+    status: 'completed' as 'pending' | 'completed' | 'scheduled',
+    isShared: false,
+    isHouseholdContribution: false,
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  const recentTransactions = useMemo(
+    () => {
+      const projectionStart = startOfDay(periodStart ?? new Date());
+      const projectionEnd = periodEnd ?? endOfMonth(projectionStart);
+      const actualTransactionKeys = new Set(
+        transactions
+          .filter(transaction => !transaction.isRecurring)
+          .map(transaction => [
+            transaction.accountId,
+            transaction.categoryId,
+            transaction.description,
+            transaction.amount,
+            transaction.type,
+            toDateInputValue(transaction.date),
+          ].join('|'))
+      );
+      const projectedRecurringTransactions = mode === 'recent'
+        ? []
+        : getProjectedRecurringTransactions(projectionStart, projectionEnd).filter(transaction => {
+          const key = [
+            transaction.accountId,
+            transaction.categoryId,
+            transaction.description,
+            transaction.amount,
+            transaction.type,
+            toDateInputValue(transaction.date),
+          ].join('|');
+
+          return !actualTransactionKeys.has(key);
+        });
+
+      const candidateDebtDuplicates = transactions.concat(projectedRecurringTransactions);
+      const upcomingDebtTransactions: Transaction[] = mode === 'upcoming' || mode === 'all'
+        ? buildProjectedDebtTransactions(debts, categories, projectionStart, projectionEnd)
+            .filter(debtTransaction => !candidateDebtDuplicates.some(candidate => {
+              if (candidate.id.startsWith('debt-')) return false;
+              if (candidate.accountId !== debtTransaction.accountId) return false;
+              if (candidate.type !== 'expense' && candidate.type !== 'bill') return false;
+              if (Math.abs(candidate.amount - debtTransaction.amount) > 0.01) return false;
+              if (Math.abs(startOfDay(candidate.date).getTime() - startOfDay(debtTransaction.date).getTime()) > 5 * 24 * 60 * 60 * 1000) return false;
+
+              const debtName = debtTransaction.description.replace(/^Dette:\s*/i, '').trim().toLowerCase();
+              const candidateCategory = categories.find(category => category.id === candidate.categoryId);
+              const sameCategory = candidate.categoryId === debtTransaction.categoryId;
+              const matchingDescription = debtName.length > 0 && candidate.description.toLowerCase().includes(debtName);
+              const debtLikeCategory = candidateCategory?.type === 'debt' || candidateCategory?.name.toLowerCase().includes('prêt');
+
+              return sameCategory || matchingDescription || debtLikeCategory;
+            }))
+        : [];
+
+      const sourceTransactions = transactions.concat(projectedRecurringTransactions, upcomingDebtTransactions).filter(transaction => {
+        if (transaction.isRecurring) return false;
+        if (mode === 'upcoming') {
+          const transactionDate = startOfDay(transaction.date);
+          const isInPeriod = transactionDate >= projectionStart && transactionDate <= projectionEnd;
+          return (transaction.status === 'scheduled' || transaction.status === 'pending') && isInPeriod;
+        }
+        if (mode === 'recent') return transaction.status === 'completed';
+        return true;
+      });
+      const sortedTransactions = [...sourceTransactions].sort((a, b) => {
+        if (mode === 'upcoming') return a.date.getTime() - b.date.getTime();
+        return b.date.getTime() - a.date.getTime();
+      });
+      return limit ? sortedTransactions.slice(0, limit) : sortedTransactions;
+    },
+    [getProjectedRecurringTransactions, limit, mode, transactions, debts, categories, periodStart, periodEnd]
+  );
+  const groupedTransactions = useMemo(() => {
+    if (mode !== 'all') {
+      return [{ key: mode, title: title, transactions: recentTransactions }];
+    }
+
+    const upcoming = recentTransactions
+      .filter(transaction => transaction.status === 'scheduled')
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+    const pending = recentTransactions
+      .filter(transaction => transaction.status === 'pending')
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+    const completed = recentTransactions
+      .filter(transaction => transaction.status === 'completed')
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    return [
+      { key: 'scheduled', title: 'À venir', transactions: upcoming },
+      { key: 'pending', title: 'En attente', transactions: pending },
+      { key: 'completed', title: 'Terminées', transactions: completed },
+    ].filter(group => group.transactions.length > 0);
+  }, [mode, recentTransactions, title]);
+
+  const activeAccounts = accounts.filter(account => account.isActive);
+  const availableCategories = categories.filter(category => category.type === formData.type);
+
+  const openEditor = (transaction: Transaction) => {
+    setEditingTransaction(transaction);
+    setFormData({
+      amount: transaction.amount.toString(),
+      description: transaction.description,
+      accountId: transaction.accountId,
+      categoryId: transaction.categoryId,
+      type: transaction.type === 'income' ? 'income' : 'expense',
+      date: toDateInputValue(transaction.date),
+      status: transaction.status === 'cancelled' ? 'pending' : transaction.status,
+      isShared: Boolean(transaction.isShared),
+      isHouseholdContribution: Boolean(transaction.isHouseholdContribution),
+    });
+  };
+
+  const closeEditor = () => {
+    setEditingTransaction(null);
+    setIsSaving(false);
+  };
+
+  const handleTypeChange = (type: 'expense' | 'income') => {
+    setFormData(prev => ({
+      ...prev,
+      type,
+      categoryId: '',
+    }));
+  };
+
+  const handleSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!editingTransaction) return;
+    if (!formData.amount || !formData.description || !formData.accountId || !formData.categoryId || !formData.date) {
+      alert('Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      await updateTransaction(editingTransaction.id, {
+        amount: parseFloat(formData.amount),
+        description: formData.description,
+        accountId: formData.accountId,
+        categoryId: formData.categoryId,
+        type: formData.type,
+        date: new Date(formData.date),
+        status: formData.status,
+        isRecurring: editingTransaction.isRecurring,
+        recurringPattern: editingTransaction.recurringPattern,
+        isShared: formData.type === 'expense' ? formData.isShared : false,
+        isHouseholdContribution: formData.type === 'income' ? formData.isHouseholdContribution : false,
+      });
+      closeEditor();
+    } catch (error) {
+      console.error('Error updating transaction:', error);
+      alert("Impossible de modifier cette transaction. Verifiez les champs puis reessayez.");
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!editingTransaction) return;
+    const confirmed = window.confirm('Supprimer cette transaction ? Le solde du compte sera ajuste.');
+    if (!confirmed) return;
+
+    try {
+      setIsSaving(true);
+      await deleteTransaction(editingTransaction.id);
+      closeEditor();
+    } catch (error) {
+      console.error('Error deleting transaction:', error);
+      alert("Impossible de supprimer cette transaction.");
+      setIsSaving(false);
+    }
+  };
+
+  const handleMarkAsCompleted = async (transaction: Transaction) => {
+    if (transaction.status === 'completed') return;
+
+    try {
+      setIsSaving(true);
+      if (transaction.id.includes('-projected-') || transaction.id.startsWith('projected-')) {
+        const { id, userId, ...transactionData } = transaction as any;
+        await addTransaction({
+          ...transactionData,
+          status: 'completed',
+          isRecurring: false,
+          recurringPattern: undefined,
+        });
+      } else {
+        await updateTransaction(transaction.id, { status: 'completed' });
+      }
+    } catch (error) {
+      console.error('Error marking transaction completed:', error);
+      alert("Impossible de marquer cette transaction comme terminée.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const renderTransaction = (transaction: Transaction) => {
+    const category = categories.find(c => c.id === transaction.categoryId);
+    const account = accounts.find(a => a.id === transaction.accountId);
+    const IconComponent = category ? (LucideIcons as any)[category.icon] : LucideIcons.DollarSign;
+    const displayImpact = getTransactionDisplayImpact(transaction);
+    const isProjectedRecurring = transaction.id.includes('-projected-');
+    const isDebtPayment = transaction.id.startsWith('debt-');
+    const isRent = isRentTransaction(transaction, category?.name);
+    const canMarkCompleted = transaction.status !== 'completed' && !isDebtPayment;
+
+    return (
+      <div key={transaction.id} className="p-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50 sm:p-4">
+        <div className="flex items-start gap-3 sm:items-center sm:gap-4">
+          <div
+            className="p-2 rounded-lg"
+            style={{ backgroundColor: `${category?.color || '#6B7280'}20` }}
+          >
+            <IconComponent
+              className="h-5 w-5"
+              style={{ color: category?.color || '#6B7280' }}
+            />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
+              {transaction.description}
+            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {category?.name || 'Sans categorie'}
+              </span>
+              {account && (
+                <>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{account.name}</span>
+                </>
+              )}
+              <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {format(transaction.date, 'dd MMM yyyy', { locale: fr })}
+              </span>
+              {transaction.status !== 'completed' && (
+                <>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    transaction.status === 'scheduled'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                  }`}>
+                    {transaction.status === 'scheduled' ? 'Planifiée' : 'En attente'}
+                  </span>
+                </>
+              )}
+              {transaction.isShared && (
+                <>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                    <LucideIcons.Users className="h-3 w-3" />
+                    Commune
+                  </span>
+                </>
+              )}
+              {transaction.isHouseholdContribution && (
+                <>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                    <LucideIcons.HeartHandshake className="h-3 w-3" />
+                    Provision Foyer
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <p className={`whitespace-nowrap text-sm font-semibold ${
+              displayImpact >= 0
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}>
+              {displayImpact >= 0 ? '+' : '-'}{Math.abs(displayImpact).toFixed(2)} EUR
+            </p>
+            {!isProjectedRecurring && !isDebtPayment && (
+              <button
+                type="button"
+                onClick={() => openEditor(transaction)}
+                className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-slate-700 dark:hover:text-slate-200 sm:rounded-lg"
+                aria-label="Modifier la transaction"
+              >
+                <LucideIcons.Pencil className="h-4 w-4" />
+              </button>
+            )}
+            {canMarkCompleted && (
+              <button
+                type="button"
+                onClick={() => handleMarkAsCompleted(transaction)}
+                className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-green-500 dark:hover:bg-slate-700 dark:hover:text-slate-200 sm:rounded-lg"
+                aria-label="Marquer comme terminé"
+              >
+                <LucideIcons.Check className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <div className="rounded-xl border border-slate-200/80 bg-white shadow-card dark:border-slate-800/80 dark:bg-slate-900">
+        <div className="border-b border-slate-200 p-4 dark:border-slate-700 sm:p-6">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+            {title}
+          </h3>
+        </div>
+
+        {recentTransactions.length > 0 ? (
+          <div className={mode === 'all' ? 'space-y-4 p-3 sm:p-4' : 'divide-y divide-slate-200 dark:divide-slate-700'}>
+            {mode === 'all' ? (
+              groupedTransactions.map(group => (
+                <section key={group.key} className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <div className={`flex items-center justify-between px-4 py-3 ${
+                    group.key === 'scheduled'
+                      ? 'bg-blue-50 text-blue-900 dark:bg-blue-950/30 dark:text-blue-100'
+                      : group.key === 'pending'
+                        ? 'bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-100'
+                        : 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-100'
+                  }`}>
+                    <h4 className="text-sm font-semibold">{group.title}</h4>
+                    <span className="rounded-full bg-white/70 px-2.5 py-1 text-xs font-medium dark:bg-slate-950/30">
+                      {group.transactions.length}
+                    </span>
+                  </div>
+                  <div className="divide-y divide-slate-200 dark:divide-slate-700">
+                    {group.transactions.map(renderTransaction)}
+                  </div>
+                </section>
+              ))
+            ) : (
+              <>
+                {recentTransactions.slice(0, showAll ? undefined : initialLimit).map(renderTransaction)}
+                {collapsible && recentTransactions.length > initialLimit && (
+                  <div className="p-3 text-center sm:p-4">
+                    <button
+                      onClick={() => setShowAll(!showAll)}
+                      className="text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                    >
+                      {showAll ? 'Voir moins' : `Voir plus (${recentTransactions.length - initialLimit} de plus)`}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-slate-500 dark:text-slate-400">
+            <p className="text-lg mb-2">Aucune transaction</p>
+            <p className="text-sm">Commencez par ajouter votre premiere transaction</p>
+          </div>
+        )}
+      </div>
+
+      {editingTransaction && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-0 modal-overlay sm:items-center sm:p-4">
+          <div className="max-h-[92dvh] w-full modal-panel rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900 sm:max-w-2xl sm:rounded-3xl">
+            <div className="flex items-center justify-between border-b border-slate-200/70 bg-gradient-to-b from-slate-50 to-white px-5 py-4 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900 sm:px-6">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Modifier la transaction</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Les soldes seront recalcules automatiquement.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditor}
+                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                aria-label="Fermer"
+              >
+                <LucideIcons.X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} className="max-h-[calc(92dvh-5rem)] space-y-5 overflow-y-auto p-5 sm:p-6">
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleTypeChange('expense')}
+                  className={`rounded-xl border-2 p-4 font-medium transition ${
+                    formData.type === 'expense'
+                      ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'
+                      : 'border-slate-200 text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  Depense
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTypeChange('income')}
+                  className={`rounded-xl border-2 p-4 font-medium transition ${
+                    formData.type === 'income'
+                      ? 'border-green-500 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
+                      : 'border-slate-200 text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  Revenu
+                </button>
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label htmlFor="edit-amount" className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Montant *
+                  </label>
+                  <input
+                    id="edit-amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="edit-date" className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Date *
+                  </label>
+                  <input
+                    id="edit-date"
+                    type="date"
+                    value={formData.date}
+                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="edit-description" className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Description *
+                </label>
+                <input
+                  id="edit-description"
+                  type="text"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                  required
+                />
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <div>
+                  <label htmlFor="edit-account" className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Compte *
+                  </label>
+                  <select
+                    id="edit-account"
+                    value={formData.accountId}
+                    onChange={(e) => setFormData({ ...formData, accountId: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    required
+                  >
+                    {activeAccounts.map(account => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="edit-category" className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Categorie *
+                  </label>
+                  <select
+                    id="edit-category"
+                    value={formData.categoryId}
+                    onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                    className="w-full rounded-lg border border-slate-300 px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                    required
+                  >
+                    <option value="">Choisir une categorie</option>
+                    {availableCategories.map(category => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Statut
+                </label>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, status: 'pending' })}
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition ${
+                      formData.status === 'pending'
+                        ? 'border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+                        : 'border-slate-200 text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <LucideIcons.Clock className="h-4 w-4" />
+                    En attente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, status: 'scheduled' })}
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition ${
+                      formData.status === 'scheduled'
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'
+                        : 'border-slate-200 text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <LucideIcons.CalendarClock className="h-4 w-4" />
+                    Planifiée
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, status: 'completed' })}
+                    className={`inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition ${
+                      formData.status === 'completed'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                        : 'border-slate-200 text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <LucideIcons.CheckCircle2 className="h-4 w-4" />
+                    Terminé
+                  </button>
+                </div>
+              </div>
+
+              {householdConfig?.enabled && formData.type === 'expense' && (
+                <div className="flex items-start gap-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 dark:border-indigo-800/60 dark:bg-indigo-950/20">
+                  <input
+                    id="edit-isShared"
+                    type="checkbox"
+                    checked={formData.isShared}
+                    onChange={(e) => setFormData({ ...formData, isShared: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <div>
+                    <label htmlFor="edit-isShared" className="text-sm font-semibold text-indigo-900 dark:text-indigo-200 cursor-pointer flex items-center gap-1.5">
+                      <LucideIcons.Users className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                      Dépense commune (Foyer & Couple)
+                    </label>
+                    <p className="text-xs text-indigo-700 dark:text-indigo-300 mt-0.5">
+                      Partagé à {ratioA}% ({householdConfig.userA?.name || 'Moi'}) et {ratioB}% ({householdConfig.userB?.name || 'Conjoint(e)'}).
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {householdConfig?.enabled && formData.type === 'income' && (
+                <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-800/60 dark:bg-emerald-950/20">
+                  <input
+                    id="edit-isHouseholdContribution"
+                    type="checkbox"
+                    checked={formData.isHouseholdContribution}
+                    onChange={(e) => setFormData({ ...formData, isHouseholdContribution: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <div>
+                    <label htmlFor="edit-isHouseholdContribution" className="text-sm font-semibold text-emerald-900 dark:text-emerald-200 cursor-pointer flex items-center gap-1.5">
+                      <LucideIcons.HeartHandshake className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      Provision / Remboursement Foyer (de {householdConfig.userB?.name || 'Conjoint(e)'})
+                    </label>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+                      Déduit du solde que votre partenaire vous doit ce mois-ci.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="sticky bottom-0 -mx-5 flex flex-col-reverse gap-3 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 sm:-mx-6 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={isSaving}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-200 px-4 py-3 font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-60 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-900/20"
+                >
+                  <LucideIcons.Trash2 className="h-4 w-4" />
+                  Supprimer
+                </button>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={closeEditor}
+                    disabled={isSaving}
+                    className="rounded-lg border border-slate-300 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 font-medium text-white transition hover:bg-blue-700 disabled:bg-blue-400"
+                  >
+                    <LucideIcons.Save className="h-4 w-4" />
+                    {isSaving ? 'Enregistrement...' : 'Enregistrer'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+export default RecentTransactions;
