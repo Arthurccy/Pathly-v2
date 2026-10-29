@@ -139,6 +139,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.0.3
         version: 19.3.0(@types/react@19.3.0)
+      autoprefixer:
+        specifier: ^10.4.20
+        version: 10.6.2(postcss@8.5.32)
       postcss:
         specifier: ^8.5.1
         version: 8.5.32
@@ -1088,6 +1091,13 @@ packages:
   array-timsort@1.0.3:
     resolution: {integrity: sha512-/+3GRL7dDAGEfM6TseQk/U+mi18TU2Ms9I3UlLdUMhz2hbvGNTKdj9xniwXfUqgYhHxRx0+8UnKkvlNwVU+cWQ==}
 
+  autoprefixer@10.6.2:
+    resolution: {integrity: sha512-VOw9/yGTGwPPgzFcODtcv6zhEPIeIWkRSe10L2ri2f5vZ7ID7lCt6jZzRF5/ubgOZ+szYydmEF5AYsA5jxX1tA==}
+    engines: {node: ^10 || ^12 || >=14}
+    hasBin: true
+    peerDependencies:
+      postcss: ^8.1.0
+
   balanced-match@1.0.2:
     resolution: {integrity: sha512-3oSeUO0TMV67hN1AmbXsK4yaqU7tjiHlbxRDZOpH0KW9+CeX4bRAaX0Anxt0tx2MrpRpWwQaPwIlISEJhYU5Pw==}
 
@@ -1519,6 +1529,9 @@ packages:
   forwarded@0.2.0:
     resolution: {integrity: sha512-buRG0fpBtRHSTCOASe6hD258tEubFoRLb4ZNA6NxMVHNw2gOcwHo9wyablzMzOA5z9xA9L1KNjk/Nt6MT9aYow==}
     engines: {node: '>= 0.6'}
+
+  fraction.js@5.3.4:
+    resolution: {integrity: sha512-1X1NTtiJphryn/uLQz3whtY6jK3fTqoE3ohKs0tT+Ujr1W59oopxmoEh7Lu5p6vBaPbgoM0bzveAW4Qi5RyWDQ==}
 
   framer-motion@12.43.0:
     resolution: {integrity: sha512-1eaL3RvR/kAlbG7UYcpMptEyzPoENO0c6w7ZnB3/hh2vSAz/6uGAFn6fdoqTBguNstf3MsFhJHsD/0DHiclG+g==}
@@ -3412,6 +3425,15 @@ snapshots:
 
   array-timsort@1.0.3: {}
 
+  autoprefixer@10.6.2(postcss@8.5.32):
+    dependencies:
+      browserslist: 4.29.5
+      caniuse-lite: 1.0.30001820
+      fraction.js: 5.3.4
+      picocolors: 1.1.1
+      postcss: 8.5.32
+      postcss-value-parser: 4.2.0
+
   balanced-match@1.0.2: {}
 
   balanced-match@4.0.4: {}
@@ -3839,6 +3861,8 @@ snapshots:
       webpack: 5.106.2
 
   forwarded@0.2.0: {}
+
+  fraction.js@5.3.4: {}
 
   framer-motion@12.43.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
