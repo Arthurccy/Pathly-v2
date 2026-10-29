@@ -2,6 +2,8 @@
 
 > Solution FinTech d'agrégation bancaire, intelligence prédictive de trésorerie et optimisation financière.
 
+> 🤖 **Briefing Équipe & Prompts IA :** Consultez le guide complet [`docs/BRIEFING_SEANCE_POUR_IA.md`](docs/BRIEFING_SEANCE_POUR_IA.md) pour les consignes d'architecture, standards Git et les feuilles de route de chaque rôle.
+
 ---
 
 ## 🏛️ Architecture du Monorepo
