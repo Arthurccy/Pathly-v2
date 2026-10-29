@@ -8,8 +8,9 @@ build/
 .next/
 out/
 
-# Turborepo
+# Turborepo & Build artifacts
 .turbo/
+*.tsbuildinfo
 
 # Environment files
 .env
