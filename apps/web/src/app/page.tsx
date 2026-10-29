@@ -1,4 +1,6 @@
-export default function HomePage() {
+import React from 'react';
+
+export default function HomePage(): React.JSX.Element {
   return (
     <main className="min-h-screen bg-[#060913] text-slate-100 flex flex-col justify-center items-center px-4 py-16">
       <div className="max-w-4xl w-full space-y-8">
