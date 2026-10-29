@@ -27,11 +27,14 @@ import {
   CheckCircle2,
   Moon,
   Sun,
+  FileSpreadsheet,
+  ShieldCheck,
+  Info,
 } from 'lucide-react';
 
 export default function DashboardPage(): React.JSX.Element {
   // Toggle Mode Sombre (Dark) / Mode Clair (Light)
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false); // Par défaut en White Mode à la demande d'Arthur
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false); // Par défaut en White Mode
 
   // Mois sélectionné : par défaut le mois en cours (Octobre 2026)
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
@@ -65,7 +68,7 @@ export default function DashboardPage(): React.JSX.Element {
     return ['ALL', ...Array.from(set)];
   }, [transactions]);
 
-  // Simulation d'une dépense en direct
+  // Simulation d'une dépense manuelle
   const handleSimulateExpense = (amount: number, description: string, category: Transaction['category']) => {
     const newTx: Transaction = {
       id: `tx-sim-${Date.now()}`,
@@ -73,16 +76,16 @@ export default function DashboardPage(): React.JSX.Element {
       date: new Date().toISOString().split('T')[0],
       month: selectedMonth === 'ALL' ? '2026-10' : selectedMonth,
       amount: -amount,
-      description: `[Simulation] ${description}`,
+      description: `[Saisie Manuelle] ${description}`,
       category,
     };
 
     setTransactions((prev) => [newTx, ...prev]);
-    setSimulationFeedback(`Dépense de ${formatCurrency(amount)} ajoutée au compte courant !`);
+    setSimulationFeedback(`Dépense manuelle de ${formatCurrency(amount)} ajoutée avec succès !`);
     setTimeout(() => setSimulationFeedback(null), 4000);
   };
 
-  // Simulation d'un virement d'équilibrage depuis l'épargne
+  // Simulation d'un virement d'équilibrage manuel
   const handleSimulateTransfer = () => {
     const transferAmount = 300;
     const now = new Date().toISOString().split('T')[0];
@@ -94,7 +97,7 @@ export default function DashboardPage(): React.JSX.Element {
       date: now,
       month,
       amount: -transferAmount,
-      description: '[Simulation] Virement vers Compte Courant',
+      description: '[Virement Manuel] Vers Compte Courant',
       category: 'Virement Interne',
       isTransfer: true,
     };
@@ -105,14 +108,20 @@ export default function DashboardPage(): React.JSX.Element {
       date: now,
       month,
       amount: transferAmount,
-      description: '[Simulation] Réception depuis Livret A',
+      description: '[Virement Manuel] Reçu depuis Livret A',
       category: 'Virement Interne',
       isTransfer: true,
     };
 
     setTransactions((prev) => [txIn, txOut, ...prev]);
-    setSimulationFeedback(`Arbitrage de ${formatCurrency(transferAmount)} exécuté entre le Livret A et le Compte Courant.`);
+    setSimulationFeedback(`Arbitrage manuel de ${formatCurrency(transferAmount)} exécuté entre Livret A et Compte Courant.`);
     setTimeout(() => setSimulationFeedback(null), 4000);
+  };
+
+  // Simulation de l'import CSV / OFX
+  const handleSimulateImport = () => {
+    setSimulationFeedback('Moteur d’import intelligent prêt : analyse des formats BoursoBank, BNP, CA et Revolut (CSV/OFX) sans doublon.');
+    setTimeout(() => setSimulationFeedback(null), 5000);
   };
 
   return (
@@ -138,12 +147,12 @@ export default function DashboardPage(): React.JSX.Element {
               <span className={`font-extrabold text-xl tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                 Pathly
               </span>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                V2 LIVE
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                100% MANUEL & IMPORTS
               </span>
             </div>
             <p className={`text-xs font-medium hidden sm:block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-              Agrégation Bancaire & Optimisation Prédictive
+              Gestion Financière Souveraine • Zéro API Bancaire Payante
             </p>
           </div>
         </div>
@@ -179,8 +188,8 @@ export default function DashboardPage(): React.JSX.Element {
                 : 'bg-slate-50 border-slate-200 text-slate-700'
             }`}
           >
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            Flux bancaires synchronisés (5 mois)
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+            Données privées locales (Sans API externe)
           </div>
 
           <div className="flex items-center gap-2.5 pl-1">
@@ -195,7 +204,7 @@ export default function DashboardPage(): React.JSX.Element {
             </div>
             <div className="hidden sm:block text-left text-xs">
               <p className={`font-bold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>Arthur Courchay</p>
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">Compte Premium FinTech</p>
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">Compte Démo (5 mois)</p>
             </div>
           </div>
         </div>
@@ -203,6 +212,26 @@ export default function DashboardPage(): React.JSX.Element {
 
       {/* ==================== CORPS DU DASHBOARD ==================== */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-8 py-6 space-y-6">
+        {/* ==================== BANNIÈRE EXPLICATIVE : CHOIX TECHNIQUE & MANUEL ==================== */}
+        <div
+          className={`p-4 sm:p-5 rounded-2xl border flex items-start gap-3.5 transition-colors shadow-sm ${
+            isDarkMode
+              ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+              : 'bg-amber-50/80 border-amber-300 text-amber-900'
+          }`}
+        >
+          <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1 text-xs sm:text-sm leading-relaxed">
+            <p className="font-bold">
+              Positionnement Technique de Pathly V2 : Gestion Manuelle & Import de Relevés
+            </p>
+            <p className={`${isDarkMode ? 'text-amber-200/90' : 'text-amber-800'}`}>
+              Après étude approfondie de l’écosystème Open Banking (DSP2 / Powens), les APIs d'agrégation bancaire automatique se sont avérées inaccessibles et financièrement prohibitives. 
+              <strong> Pathly V2 assume donc un modèle 100% manuel et souverain :</strong> aucune connexion bancaire automatique, pas de partage de vos identifiants bancaires avec des tiers, mais un <strong>moteur d'import intelligent de vos exports bancaires (CSV & OFX natifs BoursoBank, BNP, Crédit Agricole, Revolut...)</strong> pour alimenter vos tableaux et vos prédictions en toute sécurité.
+            </p>
+          </div>
+        </div>
+
         {/* BANNER NOTIFICATION SIMULATION */}
         {simulationFeedback && (
           <div className="p-4 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-800 dark:text-emerald-200 text-sm font-semibold flex items-center gap-3 shadow-md animate-in fade-in slide-in-from-top-2">
@@ -211,7 +240,7 @@ export default function DashboardPage(): React.JSX.Element {
           </div>
         )}
 
-        {/* ==================== SÉLECTEUR DE MOIS HISTORIQUE ==================== */}
+        {/* ==================== SÉLECTEUR DE MOIS HISTORIQUE & ACTIONS ==================== */}
         <div
           className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 rounded-2xl border transition-colors shadow-sm ${
             isDarkMode ? 'bg-[#0f172a] border-slate-700' : 'bg-white border-slate-200'
@@ -263,29 +292,37 @@ export default function DashboardPage(): React.JSX.Element {
             </button>
           </div>
 
-          {/* BOUTONS D'INTERACTIONS RAPIDES */}
-          <div className="flex items-center gap-2.5 px-1">
+          {/* BOUTONS D'ACTIONS : IMPORTS ET SAISIES MANUELLES */}
+          <div className="flex flex-wrap items-center gap-2 px-1">
+            <button
+              onClick={handleSimulateImport}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-sm"
+              title="Importer un fichier de relevé bancaire (CSV ou OFX)"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-white" />
+              <span>Importer Relevé (CSV/OFX)</span>
+            </button>
             <button
               onClick={() => handleSimulateExpense(45.5, 'Courses Express Monoprix', 'Alimentation')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition border shadow-sm ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition border shadow-sm ${
                 isDarkMode
                   ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-600'
                   : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-300'
               }`}
             >
-              <PlusCircle className="w-4 h-4 text-rose-500" />
-              <span>Simuler -45,50 €</span>
+              <PlusCircle className="w-3.5 h-3.5 text-rose-500" />
+              <span>+ Saisie Dépense</span>
             </button>
             <button
               onClick={handleSimulateTransfer}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition border shadow-sm ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition border shadow-sm ${
                 isDarkMode
                   ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-600'
                   : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-300'
               }`}
             >
-              <ArrowRightLeft className="w-4 h-4 text-blue-500" />
-              <span>Arbitrage Épargne (+300€)</span>
+              <ArrowRightLeft className="w-3.5 h-3.5 text-blue-500" />
+              <span>Virement Manuel (+300€)</span>
             </button>
           </div>
         </div>
@@ -362,7 +399,7 @@ export default function DashboardPage(): React.JSX.Element {
             <div className="text-2xl sm:text-3xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
               +{formatCurrency(currentMonthInfo.totalIncome)}
             </div>
-            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">Salaire et primes nettes</p>
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">Salaires et versements saisis</p>
           </div>
 
           {/* DÉPENSES DU MOIS */}
@@ -433,10 +470,10 @@ export default function DashboardPage(): React.JSX.Element {
           <div className="flex items-center justify-between">
             <h2 className={`text-lg font-bold flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
               <Building2 className="w-5 h-5 text-emerald-500" />
-              Mes Comptes Connectés (4)
+              Mes Comptes Suivis (4) — Gestion Manuelle & Imports
             </h2>
             <span className={`text-xs font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-              Agrégation Bancaire Souveraine
+              Alimenté par Saisie Manuelle et Fichiers CSV / OFX
             </span>
           </div>
 
@@ -583,7 +620,7 @@ export default function DashboardPage(): React.JSX.Element {
             <div>
               <h2 className={`text-lg font-bold flex items-center gap-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                 <CreditCard className="w-5 h-5 text-emerald-500" />
-                Opérations & Mouvements Financiers
+                Opérations Financières (Imports & Saisies Manuelles)
               </h2>
               <p className={`text-xs font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                 {filteredTransactions.length} transaction(s) affichée(s)
@@ -593,7 +630,7 @@ export default function DashboardPage(): React.JSX.Element {
             {/* BARRE DE RECHERCHE ET FILTRE */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
               <div className="relative">
-                <Search className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-slate-400' : 'text-slate-400'}`} />
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Rechercher une opération..."
@@ -728,10 +765,10 @@ export default function DashboardPage(): React.JSX.Element {
         }`}
       >
         <p className={`font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-          Pathly V2 FinTech Platform • Développé par l'équipe de 8 ingénieurs YDays
+          Pathly V2 • Plateforme de Gestion Financière 100% Manuelle & Souveraine
         </p>
         <p className={`text-[11px] ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-          Simulation d'ingestion bancaire Open Banking • Données de démonstration 5 mois (Juin — Octobre 2026)
+          Aucune API d'agrégation bancaire payante • Imports de fichiers de banques (CSV / OFX) & Saisies manuelles
         </p>
       </footer>
     </div>
