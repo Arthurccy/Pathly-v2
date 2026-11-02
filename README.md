@@ -33,6 +33,16 @@ Pathly-v2/
 
 | Membre | Rôle | Périmètre technique principal |
 | :--- | :--- | :--- |
+| **Arthur COURCHAY** | Chef de projet / Tech Lead | Pilotage Scrum, architecture SaaS Freemium, CI/CD GitHub Actions & Kit Pitch BAs |
+| **Victor HUBERT** | Développeur Backend | Safe-to-Spend en direct, Net Worth 360°, amortissement crédits & Comparateur Open Data (`apps/api`) |
+| **Rémy PORQUET** | Développeur Backend | Ingestion multi-formats (OFX/CSV), Merchant Cleaner & Déduplication SHA-256 (`apps/api`) |
+| **Ishak MESSAOUDI** | Développeur Full Stack | Modélisation Prisma (Biens, Crédits, Bourse, Projets), Seed Multi-Personas & SDK (`packages/shared-types`) |
+| **Loris NEVE** | Frontend / UI & UX | Design system shadcn/ui OLED, Logos auto (CIC/Trade Republic/Binance), Modal Patrimoine & Mode Démo (`apps/web`) |
+| **Jeremy CHAN-FUNG-TING** | Frontend / Animations & 3D | Financial Core 3D holographique R3F réactif, Jauge de Patrimoine & Product Tour immersif (`apps/web`) |
+| **Clément LAUMOND** | Performance Web | Optimistic UI (0ms), Streaming SSR Suspense, benchmarks Lighthouse 100% vert |
+| **Mathias BOUCLON** | SEO, Growth & Acquisition | Landing page SaaS avec simulateur public d'économies, Pricing Table & Balisage Schema.org |
+
+--- | :--- | :--- |
 | **Arthur COURCHAY** | Chef de projet / Tech Lead | Pilotage Scrum, architecture globale, arbitrage fonctionnel et livrables |
 | **Victor HUBERT** | Développeur Backend | Endpoints d'API, logique métier, interfaçage données (`apps/api`) |
 | **Rémy PORQUET** | Développeur Backend | Ingestion API Powens, webhooks, persistance et synchronisation (`apps/api`) |
