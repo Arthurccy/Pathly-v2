@@ -1,12 +1,12 @@
-# 💎 Pathly V2 — Monorepo FinTech
+# Pathly V2 — Monorepo FinTech
 
 > Solution FinTech d'agrégation bancaire, intelligence prédictive de trésorerie et optimisation financière.
 
-> 🤖 **Briefing Équipe & Prompts IA :** Consultez le guide complet [`docs/BRIEFING_SEANCE_POUR_IA.md`](docs/BRIEFING_SEANCE_POUR_IA.md) pour les consignes d'architecture, standards Git et les feuilles de route de chaque rôle.
+> **Briefing Équipe & Prompts IA :** Consultez le guide complet [`docs/BRIEFING_SEANCE_POUR_IA.md`](docs/BRIEFING_SEANCE_POUR_IA.md) pour les consignes d'architecture, standards Git et les feuilles de route de chaque rôle.
 
 ---
 
-## 🏛️ Architecture du Monorepo
+## Architecture du Monorepo
 
 Ce monorepo est orchestré avec **pnpm workspaces** et **Turborepo** :
 
@@ -29,7 +29,7 @@ Pathly-v2/
 
 ---
 
-## 👥 Rôles & Responsabilités de l'Équipe (8 Membres)
+## Rôles & Responsabilités de l'Équipe (8 Membres)
 
 | Membre | Rôle | Périmètre technique principal |
 | :--- | :--- | :--- |
@@ -44,7 +44,7 @@ Pathly-v2/
 
 ---
 
-## 🚀 Démarrage Rapide
+## Démarrage Rapide
 
 ### 1. Prérequis
 - **Node.js** >= 20.x
@@ -74,7 +74,7 @@ pnpm dev
 
 ---
 
-## 🔐 Règles de Sécurité Bancaire
+## Règles de Sécurité Bancaire
 1. **Isolation stricte de la BDD** : La V2 dispose de sa propre base Supabase dédiée. Ne connectez jamais la BDD de production de la V1 à la V2.
 2. **Secrets Powens strictement serveur** : Le client (`apps/web`) ne doit **JAMAIS** connaître `POWENS_CLIENT_SECRET`. Toutes les requêtes d'ingestion passent par `apps/api`.
 3. **Chiffrement au repos (AES-256-GCM)** : Les jetons d'accès bancaires sont chiffrés avant d'être sauvegardés en base de données.
