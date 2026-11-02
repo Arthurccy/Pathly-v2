@@ -1,108 +1,44 @@
-# 🗺️ Master Roadmap — Les 11 Séances YDays (Rythme B — Pathly V2)
-## Cadrage Stratégique, Livrables & Déroulé Semestriel pour l'Équipe (8 Membres)
+# 🗺️ Master Roadmap & Matrice des 8 Rôles — Les 11 Séances YDays (Pathly V2)
+## Cadrage Opérationnel Semestriel : Une charge dense et individualisée pour chaque séance
 
 > **Projet :** Pathly V2 — Cockpit FinTech d'Intelligence Patrimoniale, Prédiction de Trésorerie & Optimisation de Dépenses  
 > **Chef de Projet / Tech Lead :** Arthur COURCHAY  
-> **Campus :** Rouen Ynov — Année 2026-2027  
-> **Modèle de Développement :** 8 Développeurs assistés par Agents IA (Journées Complètes Intensives)
+> **Campus :** Rouen Ynov — Année 2026-2027 (Semaine Rythme B)  
+> **Modèle de Développement :** 8 Développeurs assistés par Agents IA (Séances de 6h00 : 9h00–11h30 | 13h00–16h30)
 
 ---
 
-## 📅 Vue Synthétique des 11 Séances
+## 🎯 La Règle d'Or de Charge : "Zéro Sous-Charge, Zéro Vibe Coding"
 
-```mermaid
-flowchart TD
-    S1["Séance 1 : Kick-off, Stack Cible & Monorepo Turborepo"] --> S2
-    S2["Séance 2 : Architecture Backend, Ingestion, Patrimoine 360°, Logos & Comparateur Open Data"] --> S3
-    S3["Séance 3 : Pipeline CI/CD GitHub Actions, Design System Consolidé & Maquettes 3D"] --> S4
-    S4["Séance 4 : Flux Bourse/Crypto temps réel, Composants UI Métier & Socle SEO"] --> S5
-    S5["Séance 5 : Frontend Réactif, Intégration 3D Avancée & Optimisation Critical Rendering Path"] --> S6
-    S6["Séance 6 : Synchronisation Temps Réel, Catégorisation Auto & Accessibilité WCAG AA"] --> S7
-    S7["Séance 7 : Moteur Prédictif 90j, Visualisations de Données & Lazy-Loading 3D"] --> S8
-    S8["Séance 8 : Modules de Simulation Patrimoniale Avancée (Monte Carlo, Immo) & Parcours"] --> S9
-    S9["Séance 9 : Audit de Sécurité Interne, Tests de Charge, Audits Lighthouse & Polissage"] --> S10
-    S10["Séance 10 : Recette Globale de Bout en Bout & Déploiement Production (Vercel/Supabase)"] --> S11
-    S11["Séance 11 : Bilan KPI, Rétrospective Technique & Répétition Générale Soutenance BAs"]
-```
+Chaque développeur dispose à chaque séance d'une **feuille de route dense en 3 Paliers d'intensité progressive** :
+* **Palier 1 (Matinée 9h00 – 11h30) :** Socle Architectural, Modélisation & Endpoints P0
+* **Palier 2 (Début d'après-midi 13h00 – 15h00) :** Moteurs Métier, Killer Features & Algorithmes P1
+* **Palier 3 (Fin d'après-midi 15h00 – 16h30) :** Hardening, Tests aux Limites, Captures PPTX & Rapport Markdown P2
 
 ---
 
-## 📌 Détail des Séances
+## 📊 Matrice des 8 Développeurs à travers les 11 Séances
 
-### Phase 1 : Fondation Architecturale & Socles Métier (Séances 1 à 3)
-
-* **Séance 1 (Terminé) — Kick-off & Monorepo :**
-  - Choix de la stack cible : Next.js 15, NestJS 11, Prisma, Supabase V2, Turborepo, pnpm workspaces.
-  - Cadrage du backlog et attribution des 8 spécialités.
-
-* **Séance 2 (En cours — Journée Intensive x3) — Architecture Temps Réel & Patrimoine 360° :**
-  - Moteur **Safe-to-Spend en direct** (< 50ms) et calcul du Patrimoine Net global.
-  - Moteur d'ingestion souverain multi-banques (OFX/CSV) + **Merchant Cleaner** et déduplication SHA-256.
-  - **Comparateur d'économies d'énergie et télécoms 100% gratuit** basé sur l'Open Data français (Médiateur de l'Énergie, ARCEP).
-  - Gestion patrimoniale complète : Biens physiques (montre, voiture, immo), Crédits & emprunts, Bourse avec PRU (PEA/CTO/Crypto), Projets de vie.
-  - **Résolveur automatique de logos institutionnels** (CIC, Trade Republic, Binance, etc.).
-  - **Financial Core 3D holographique réactif** à la santé financière + **Product Tour interactif** guidé ("qui claque").
-  - Mises à jour optimistes (0ms) et Landing Page avec simulateur d'économies public.
-  - Exigence des rapports techniques Markdown obligatoires avec le kit pour les slides PPTX d'Arthur.
-
-* **Séance 3 — Pipeline CI/CD Robuste & Socle Design Finalisé :**
-  - Industrialisation du workflow GitHub Actions (tests automatisés, builds distribués avec cache Turborepo distant).
-  - Consolidation du Design System sur l'ensemble des pages (Dashboard, Patrimoine, Transactions, Simulations).
-  - Finalisation des maquettes et des assets vectoriels haute résolution.
+| Séance | Arthur COURCHAY<br/>*(Tech Lead & SaaS)* | Victor HUBERT<br/>*(Backend Core)* | Rémy PORQUET<br/>*(Ingestion & Data)* | Ishak MESSAOUDI<br/>*(Full Stack & BDD)* | Loris NEVE<br/>*(Frontend UI/UX)* | Jeremy CHAN-FUNG-TING<br/>*(3D & Motion)* | Clément LAUMOND<br/>*(Web Performance)* | Mathias BOUCLON<br/>*(SEO & Growth)* |
+| :---: | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **S1** *(Fait)* | Cadrage Turborepo & Backlog | Architecture API NestJS | Audit flux & Webhooks | Modélisation Prisma V2 | Mockup UI Dark Mode | Exploration Three.js | Audit perfs de la V1 | Audit SEO & Mots-clés |
+| **S2** *(Jour J)* | **CI GitHub Actions, Quotas Freemium & Pitch BAs** | **Safe-to-Spend direct, Net Worth & Comparateur Open Data** | **Parseurs OFX/CSV, Merchant Cleaner & Dédup SHA-256** | **Modèles Prisma 360°, Seed Personas & SDK Web** | **Logos auto (CIC/Trade Republic), Modal Patrimoine & Mode Démo** | **Financial Core 3D holographique & Product Tour immersif** | **Optimistic UI (0ms), Streaming SSR & Lighthouse** | **Landing Page SaaS, Pricing Table & Simulateur d'économies** |
+| **S3** | Industrialisation CI/CD & Déploiements Preview | DTOs de Valorisation Marché & API Endpoints Bourse | Pipeline de Traitement Asynchrone des Relevés Lourds | Cache Redis / Supabase & Invalidations | Shell Applicatif Multi-Pages & Design System Figma | Textures PBR 3D, Shaders Reflets & Micro-interactions | Optimisation Critical Rendering Path (FCP < 0.8s) | Architecture Sémantique & Génération Dynamique Sitemap |
+| **S4** | Règles de Protection & Secrets Vault Bancaire | Connecteurs Cotations Bourse (Yahoo Fin/Euronext) & Crypto | Normalisation Multi-Devises (EUR, USD, CHF, GBP) | Relations Portefeuille Bourse & Historique d'Évolution | Écrans Dédiés Bourse (PEA/CTO/Crypto) & Fiches Actifs | Visualisation 3D de l'Arbre Patrimonial (Wealth Tree) | Traque aux Fuites Mémoire & Analyse Bundle JS (< 120 Ko) | OpenGraph Cards Dynamiques & Twitter Cards B2C |
+| **S5** | Feature Flags & Gestion des Droits Utilisateurs | Moteur de Calcul des Plus-Values Réalisées vs Latentes | Détection Automatique des Virements Internes d'Équilibrage | Pagination par Curseur Haute Fréquence Prisma | Graphiques Financiers Interactifs & Filtres Temporels | Animations de Transition d'Écrans Sans Re-render (Motion) | Optimisation Rendu Graphiques & Virtualisation Listes | Balisage Données Structurées Schema.org Avancé |
+| **S6** | Monitoring Sentry & Traçabilité des Transactions | Moteur de Catégorisation Auto-Apprenant (Heuristiques) | Gestion des Erreurs d'Imports Partiels & Fichiers Corrompus | Table des Règles Utilisateur & Moteur de Recatégorisation | Écran de Gestion des Catégories & Règles en 1 Clic | Scène 3D Interactive Réactive aux Catégories de Dépenses | Réduction du Total Blocking Time (TBT < 50ms) | Audit de Balisage Rich Snippets & Indexation Google |
+| **S7** | Métriques Métier & Télémétrie d'Usage Anonymisée | Moteur Prédictif de Trésorerie à 90j (Saisonnalité & Chocs) | Pipeline de Synchronisation en Tâche de Fond (Worker) | Snapshots Quotidiens de Patrimoine & Historisation | Jauge de Trésorerie Prédictive & Timeline Visuelle | Courbe de Trésorerie 3D Dynamique avec Particules | Lazy-Loading Intelligent des Assets 3D & Modules Lourds | Stratégie de Maillage Interne SEO & Pages Piliers |
+| **S8** | Arbitrage Fonctionnel & Validation des Parcours Clés | Simulateur d'Emprunt Immo (Taux d'Usure, Capacité 35%) | Moteur d'Extraction de Frais Bancaires Dissimulés | Moteur de Simulation Retraite / Règle des 4% (FIRE) | Parcours Guidé de Simulation Immobilière & Résultats | Rendu Visuel 3D du Projet de Vie (Maison, Voiture, etc.) | Benchmarks Réseau (Conditions 3G / Mobile Dégradé) | Pages Satellites SEO Thématiques (ex: "Calculer son Safe-to-Spend") |
+| **S9** | Audit de Sécurité Interne & Verrouillage OWASP | Tests de Charge API NestJS (K6 : 500 req/s < 100ms) | Sécurisation Ingestion & Prévention Injections Fichiers | Audit Index BDD, Requêtes N+1 & Isolation Données | Polissage Graphique Fin, Micro-Détails & Dark/Light | Optimisation WebGL (Garanti 60 FPS sur GPU Modeste) | Audit Lighthouse Global (100% Vert sur Mobile & Desktop) | Audit SEO Technique Global & Traque aux Erreurs 404 |
+| **S10** | Déploiement Production (Vercel + Supabase Dédié) | Finalisation Endpoints Prod, Rate Limiting & HTTPS | Validation Recette d'Importation avec 20 Relevés Réels | Migration Finale BDD & Scripts de Sauvegarde Automatique | Recette UI/UX Complète sur 10 Tailles d'Écrans (Mobile/Desktop)| Recette Visuelle 3D de Bout en Bout | Audit Web Vitals en Environnement de Production Réel | Vérification Déploiement Sitemap & Google Search Console |
+| **S11** | **Bilan KPI, Rétrospective Technique & Pitch BAs** | **Présentation Architecture Serveur & Moteurs Prédictifs** | **Démonstration Ingestion 100% Souveraine & Marge Brute** | **Présentation Modèle Relationnel & Intégrité Données** | **Démonstration Parcours Utilisateur & Mode Démo BAs** | **Démonstration Expérience Immersive & Product Tour** | **Présentation Rapport de Performance & Fluidité** | **Présentation Stratégie Acquisition & Business Model** |
 
 ---
 
-### Phase 2 : Enrichissement des Données & Moteurs Prédictifs (Séances 4 à 6)
+## 🏁 Definition of Done (DoD) pour CHAQUE Séance
 
-* **Séance 4 — Flux Bourse & Crypto Temps Réel :**
-  - Connexion aux flux de valorisation de marché (cotations actions/ETFs et cours crypto).
-  - Calcul dynamique des plus/moins-values latentes et historiques.
-  - Sécurisation avancée et isolation des secrets bancaires.
-
-* **Séance 5 — Expérience Frontend Ultra-Fluide & Immersion 3D :**
-  - Optimisation du Critical Rendering Path (FCP < 0.8s, CLS = 0).
-  - Animations de transitions d'écrans Framer Motion sans re-render intempestif.
-  - Intégration des graphiques financiers haute densité (Recharts / Visx customisés).
-
-* **Séance 6 — Synchronisation Temps Réel & Catégorisation Intelligente :**
-  - Système de catégorisation automatique auto-apprenant sur les libellés bancaires.
-  - Gestion des règles personnalisées créées par l'utilisateur.
-  - Audit complet d'accessibilité (contraste, focus clavier, lecteurs d'écran).
-
----
-
-### Phase 3 : Intelligence Patrimoniale & Simulations Avancées (Séances 7 à 8)
-
-* **Séance 7 — Moteur Prédictif de Trésorerie à 90 jours :**
-  - Modélisation mathématique des variations saisonnières et des dépenses variables.
-  - Détection prédictive des risques de trésorerie avec alertes proactives.
-  - Optimisation du chargement des scènes 3D et des graphiques complexes.
-
-* **Séance 8 — Simulateurs de Projets de Vie & Scénarios Patrimoniaux :**
-  - Simulateur d'achat immobilier : calcul de capacité d'emprunt, taux d'usure, apport nécessaire et calendrier dynamique.
-  - Simulation de retraite et liberté financière (méthode FIRE / règle des 4%).
-  - Scénarios d'arbitrage de remboursement anticipé de crédits.
-
----
-
-### Phase 4 : Hardening, Recette & Déploiement en Production (Séances 9 à 10)
-
-* **Séance 9 — Audit de Sécurité, Tests de Charge & Polissage :**
-  - Audit interne de sécurité (OWASP, protection injection, chiffrement au repos).
-  - Tests de charge (K6 ou Artillery) sur l'API NestJS (< 100ms sous 500 requêtes/sec).
-  - Traque impitoyable des régressions visuelles et sonores.
-  - Validation Lighthouse 100% vert sur l'ensemble des pages.
-
-* **Séance 10 — Recette Globale & Déploiement Production :**
-  - Validation des parcours utilisateurs de bout en bout (End-to-End avec Playwright).
-  - Déploiement de l'application sur Vercel (Web) et Supabase/Serveur dédié (API/BDD).
-  - Configuration du nom de domaine, HTTPS et monitoring Sentry.
-
----
-
-### Phase 5 : Clôture & Répétition Soutenance (Séance 11)
-
-* **Séance 11 — Rétrospective, Bilan des KPI & Soutenance devant les Business Angels :**
-  - Rétrospective technique globale de l'équipe de 8 développeurs.
-  - Bilan des KPI atteints : performance (< 500ms), rétention SaaS, ROI utilisateur (+444 €/an d'économies).
-  - Répétition générale de la présentation orale avec le support PowerPoint complet issu des rapports `.md`.
+Pour valider chaque séance avant de quitter la salle à 16h30 :
+1. **Zéro Erreur :** `pnpm check-all` au vert à 100% (TypeScript strict, zéro `any`, zéro warning ESLint).
+2. **Couverture de Tests :** Au moins 8 à 12 tests Jest unitaires passants sur les fonctionnalités du jour.
+3. **Compte-Rendu Markdown :** Présence obligatoire de `docs/seances/seance-X/RAPPORT_<PRENOM>.md` avec la section Kit Pitch BAs (captures HD 16:9 et chiffres chocs).
+4. **Validation Tech Lead :** Relecture et merge de la PR par Arthur sur `main`.
