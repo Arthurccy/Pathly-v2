@@ -1,94 +1,50 @@
-# 📑 Compte-Rendu Technique de Séance — Pathly V2
+# Rapport de séance — Prénom Nom
 
-> **Instructions pour le développeur & son IA :**  
-> Ce document doit être obligatoirement rempli et inclus dans votre branche et Pull Request sous le chemin :  
-> `docs/seances/seance-X/RAPPORT_<PRENOM>.md` (ex: `docs/seances/seance-2/RAPPORT_VICTOR.md`).  
-> *Toute PR sans ce rapport technique complet sera automatiquement refusée.*
+Séance : … · Branche / PR : … · Ticket : … · Relecteur : …
 
----
+> Viser 30 à 60 lignes utiles, hors extraits nécessaires. L’IA peut préparer ce rapport ; son auteur doit le lire et le corriger avant livraison. Décrire le travail réel, sans journal de prompts, formules commerciales ni répétition du ticket. Ne pas cocher une vérification non effectuée. Aucun secret ou donnée personnelle.
 
-## 👤 Informations Générales
+## 1. Résultat et périmètre
 
-* **Développeur :** [Prénom NOM]
-* **Rôle & Pôle :** [Ex: Développeur Backend — Ingestion Bancaire]
-* **Séance n° :** [Ex: Séance 2]
-* **Branche Git :** `feat/...` ou `chore/...`
-* **Ticket associé :** `[Back] ...` (#numéro_ticket)
+- Livré et intégré : …
+- Livré mais pas encore intégré : …
+- Reporté ou bloqué (P0/P1/P2, raison et prochaine action) : …
 
----
+## 2. Fonctionnement à connaître
 
-## 🎯 1. Périmètre & Objectifs de la Séance
-*Rappeler brièvement les missions qui vous étaient confiées pour cette séance selon la feuille de route.*
+- Point d’entrée et fichiers principaux : …
+- Chemin des données en deux ou trois phrases : …
+- Décision importante et raison : …
+- Contrat consommé/exposé, version ou référence et fixture utilisée : …
+- Validation isolée avec doublure ou intégration réelle ; raccordement restant : …
 
-* Objectif principal : ...
-* Sous-objectifs :
-  - [x] Tâche 1
-  - [x] Tâche 2
-  - [x] Tâche 3
+## 3. Exemple concret vérifié
 
----
+Décrire une entrée, le résultat attendu et le résultat observé. Ajouter un cas limite ou d’erreur et indiquer comment le résultat attendu a été établi.
 
-## 🧠 2. Choix d'Architecture & Décisions Techniques (ADR)
-*Pourquoi avoir fait ces choix plutôt qu'une autre approche ? Expliquez et justifiez pour le Tech Lead / CP.*
+Exemple pour un calcul : solde 1 500 €, charges restantes 800 €, réserve 200 € → disponible attendu 500 €. Si le solde devient négatif, préciser le comportement retenu et observé.
 
-| Décision / Choix | Alternatives envisagées | Justification technique (Sécurité, Perf, Maintenabilité) |
-| :--- | :--- | :--- |
-| *Ex: Calcul Safe-to-Spend en temps réel* | *Batch cron nocturne* | *Réactivité immédiate à chaque dépense ou simulation* |
-| *Ex: Prisme 3D / Walkthrough interactif* | *Composant statique* | *Effet Waouh instantané pour la démo investisseurs/BAs* |
+Pour un composant : props/état initial → action utilisateur → affichage attendu ; erreur réseau → retour à l’état précédent. Pour une CI : commande correcte → succès ; erreur volontaire → contrôle en échec.
 
----
+## 4. Vérifications réellement exécutées
 
-## 🛠️ 3. Travail Réalisé & Fichiers Impactés
+| Commande ou scénario | Résultat observé                       | Limite / preuve utile                     |
+| -------------------- | -------------------------------------- | ----------------------------------------- |
+| …                    | Réussi / échoué / bloqué / non exécuté | Résumé, lien CI, capture ou extrait court |
 
-### A. Fichiers créés ou modifiés
-* `chemin/vers/fichier1.ts` : Description de la responsabilité
-* `chemin/vers/fichier2.tsx` : Description des modifications
+Ne pas confondre compilation, test métier et validation du parcours. Si des tests existent, indiquer combien ont effectivement été exécutés et s’il y a des tests ignorés. Pour une mesure, préciser jeu de données, appareil et conditions. Éviter les logs complets.
 
-### B. Contrats d'API & Interfaces exposées
-*Si vous exposez un endpoint ou un composant partagé, indiquez sa signature pour vos collègues :*
-```typescript
-// Ex: Signature DTO ou Endpoint
-```
+## 5. Limites et transmission
 
----
+- Limite connue ou hypothèse : …
+- Action attendue d’un collègue, responsable et interface concernée : … / aucune.
+- Étapes de démonstration ou de reproduction : …
+- Facultatif, pour la soutenance : une capture ou un résultat mesuré, avec contexte. Identifier toute simulation.
 
-## 🤖 4. Transparence sur le Prompting IA
-*Comment avez-vous collaboré avec votre IA pour maximiser votre vélocité et rigueur ?*
+## Relecture par l’auteur
 
-* **Modèle utilisé :** (Claude 3.5 Sonnet / Gemini 1.5 Pro / GPT-4o / etc.)
-* **Prompts clés utilisés :**
-  > *"Exemple de prompt architectural soumis à l'IA..."*
-* **Corrections manuelles apportées au code généré :**
-  * *Ex: "L'IA avait proposé un cron batch, j'ai recadré sur un calcul direct à la volée en O(1)."*
+- [ ] J’ai lu le diff et ce rapport ; ils décrivent le même résultat.
+- [ ] J’ai vérifié les résultats indiqués et signalé ce qui ne l’est pas.
+- [ ] Je peux retrouver le point d’entrée, expliquer l’exemple et montrer un cas d’erreur.
 
----
-
-## 🧪 5. Preuves de Bon Fonctionnement & Tests
-*Fournir les preuves concrètes que le code fonctionne (pas de code théorique).*
-
-### A. Résultats des tests unitaires ou de compilation
-```bash
-# Coller ici l'output de 'pnpm check-all' ou des tests Jest/Lighthouse
-```
-
-### B. Captures d'écran / Logs d'exécution
-*(Insérer une capture d'écran de Swagger, du rendu responsive, de la console ou de l'inspecteur réseau)*
-
----
-
-## 💼 6. Matière pour le Pitch Deck BAs & Démo Investisseurs (Pour Arthur)
-> *Section cruciale pour le Chef de Projet ! Donnez à Arthur la matière brute pour ses slides PPTX et sa soutenance devant les Business Angels.*
-
-* **Le One-Liner "Vente" de votre feature :**  
-  > *Ex: "Safe-to-Spend transforme l'angoisse du découvert en un chiffre vert unique calculé en direct."*
-* **Chiffre clé / Métrique d'impact utilisateur :**  
-  > *Ex: "Permet d'économiser en moyenne 38 €/mois sur des abonnements oubliés dès le premier import."*
-* **Capture d'écran HD calibrée pour slide 16:9 :**  
-  *(Chemin de l'image ou GIF inséré dans `docs/seances/seance-2/assets/` prêt à glisser dans le PowerPoint)*
-* **L'argument massue pour convaincre un investisseur :**  
-  > *Ex: "Cette fonctionnalité justifie à elle seule le passage au plan payant à 9,99 €/mois."*
-
----
-
-## ⚠️ 7. Points d'attention & Dépendances pour l'équipe
-* [ ] Action requise pour les collègues : ...
+Cette attestation et la génération du document ne remplacent pas la revue croisée ni les preuves d’exécution.
