@@ -2,7 +2,9 @@
 
 > Solution FinTech d'agrégation bancaire, intelligence prédictive de trésorerie et optimisation financière.
 
-> **Briefing Équipe & Prompts IA :** Consultez le guide complet [`docs/BRIEFING_SEANCE_POUR_IA.md`](docs/BRIEFING_SEANCE_POUR_IA.md) pour les consignes d'architecture, standards Git et les feuilles de route de chaque rôle.
+> Projet de deuxième année de master en alternance : neuf membres, onze séances de six heures, développement assisté par IA.
+>
+> Commencer par l’[index documentaire](docs/README.md), la [vision produit](docs/VISION_PRODUIT.md) et le [guide de contribution](CONTRIBUTING.md). Le [briefing S2](docs/BRIEFING_SEANCE_POUR_IA.md) décrit la séance active ; les [missions S3 à S11](docs/chefferie-de-projet/MISSIONS_PAR_SEANCE.md) donnent la suite pour chacun.
 
 ---
 
@@ -29,50 +31,50 @@ Pathly-v2/
 
 ---
 
-## Rôles & Responsabilités de l'Équipe (8 Membres)
+## Rôles et responsabilités de l’équipe (9 membres)
 
-| Membre | Rôle | Périmètre technique principal |
-| :--- | :--- | :--- |
-| **Arthur COURCHAY** | Chef de projet / Tech Lead | Pilotage Scrum, architecture SaaS Freemium, CI/CD GitHub Actions & Kit Pitch BAs |
-| **Victor HUBERT** | Développeur Backend | Safe-to-Spend en direct, Net Worth 360°, amortissement crédits & Comparateur Open Data (`apps/api`) |
-| **Rémy PORQUET** | Développeur Backend | Ingestion multi-formats (OFX/CSV), Merchant Cleaner & Déduplication SHA-256 (`apps/api`) |
-| **Ishak MESSAOUDI** | Développeur Full Stack | Modélisation Prisma (Biens, Crédits, Bourse, Projets), Seed Multi-Personas & SDK (`packages/shared-types`) |
-| **Loris NEVE** | Frontend / UI & UX | Design system shadcn/ui OLED, Logos auto (CIC/Trade Republic/Binance), Modal Patrimoine & Mode Démo (`apps/web`) |
-| **Jeremy CHAN-FUNG-TING** | Frontend / Animations & 3D | Financial Core 3D holographique R3F réactif, Jauge de Patrimoine & Product Tour immersif (`apps/web`) |
-| **Clément LAUMOND** | Performance Web | Optimistic UI (0ms), Streaming SSR Suspense, benchmarks Lighthouse 100% vert |
-| **Mathias BOUCLON** | SEO, Growth & Acquisition | Landing page SaaS avec simulateur public d'économies, Pricing Table & Balisage Schema.org |
+| Membre                | Responsabilité principale                                |
+| --------------------- | -------------------------------------------------------- |
+| Arthur COURCHAY       | Pilotage, arbitrages, CI et intégration                  |
+| Victor HUBERT         | API, trésorerie et simulations financières               |
+| Rémy PORQUET          | Import bancaire et normalisation                         |
+| Ishak MESSAOUDI       | Modèle de données, contrats, seed et client API          |
+| Loris NEVE            | Dashboard, composants UI et intégration des écrans       |
+| Jeremy CHAN-FUNG-TING | Visualisation financière et interactions                 |
+| Clément LAUMOND       | Recette de parcours, fiabilité et mesures de performance |
+| Mathias BOUCLON       | Pages publiques, SEO et sources commerciales             |
+| Yann                  | Compte utilisateur, authentification et confidentialité  |
 
---- | :--- | :--- |
-| **Arthur COURCHAY** | Chef de projet / Tech Lead | Pilotage Scrum, architecture globale, arbitrage fonctionnel et livrables |
-| **Victor HUBERT** | Développeur Backend | Endpoints d'API, logique métier, interfaçage données (`apps/api`) |
-| **Rémy PORQUET** | Développeur Backend | Ingestion API Powens, webhooks, persistance et synchronisation (`apps/api`) |
-| **Ishak MESSAOUDI** | Développeur Full Stack | Passerelle Front/Back, calculs critiques, client API (`packages/shared-types`) |
-| **Loris NEVE** | Frontend / UI & UX | Design system shadcn/ui, ergonomie, composants React (`apps/web`) |
-| **Jeremy CHAN-FUNG-TING** | Frontend / Animations & 3D | Intégrations React Three Fiber, animations micro-interactives Framer Motion |
-| **Clément LAUMOND** | Performance Web | Optimisations Core Web Vitals, temps de réponse < 500ms, benchmarks |
-| **Mathias BOUCLON** | SEO & Référencement | Architecture sémantique, SSR Next.js, métadonnées OpenGraph |
+Les [consignes de séance](docs/BRIEFING_SEANCE_POUR_IA.md) précisent les zones de modification et les revues. La [roadmap](docs/chefferie-de-projet/ROADMAP_GLOBALE_11_SEANCES.md) décrit la progression collective ; le [plan de Yann](docs/chefferie-de-projet/YANN_MISSIONS.md) détaille ses missions à partir de S2.
 
 ---
 
 ## Démarrage Rapide
 
+Commandes prévues par le dépôt. Consulter les [limites initiales de l’outillage](CONTRIBUTING.md) : génération Prisma, tests et lint demandent des vérifications ; la présence des scripts ne prouve pas le fonctionnement complet de l’API.
+
 ### 1. Prérequis
+
 - **Node.js** >= 20.x
 - **pnpm** >= 9.x (`npm install -g pnpm`)
 
 ### 2. Installation
+
 ```bash
 # À la racine du monorepo
 pnpm install
 ```
 
 ### 3. Variables d'environnement
+
 Copiez `.env.example` vers `.env` et complétez avec vos identifiants de développement (nouvelle base Supabase V2 et sandbox Powens) :
+
 ```bash
 cp .env.example .env
 ```
 
 ### 4. Lancement en développement
+
 ```bash
 # Lance simultanément le Web (port 3000) et l'API (port 4000)
 pnpm dev
@@ -85,6 +87,7 @@ pnpm dev
 ---
 
 ## Règles de Sécurité Bancaire
+
 1. **Isolation stricte de la BDD** : La V2 dispose de sa propre base Supabase dédiée. Ne connectez jamais la BDD de production de la V1 à la V2.
 2. **Secrets Powens strictement serveur** : Le client (`apps/web`) ne doit **JAMAIS** connaître `POWENS_CLIENT_SECRET`. Toutes les requêtes d'ingestion passent par `apps/api`.
 3. **Chiffrement au repos (AES-256-GCM)** : Les jetons d'accès bancaires sont chiffrés avant d'être sauvegardés en base de données.

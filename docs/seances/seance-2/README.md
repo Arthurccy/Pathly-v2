@@ -1,14 +1,21 @@
-# 📂 Comptes-Rendus Techniques — Séance 2
+# Séance 2 — Rapports et démonstration
 
-Ce répertoire rassemble les rapports d'architecture, de choix techniques et de validation de chaque membre de l'équipe pour la **Séance 2** :
+Le [briefing](../../BRIEFING_SEANCE_POUR_IA.md) définit les règles communes. Les [tickets](../../chefferie-de-projet/GITHUB_PROJECTS_SEANCE_2.md) définissent les P0, P1, P2 et critères d’acceptation de chacun.
 
-1. `RAPPORT_ARTHUR.md` : Bilan de pilotage, arbitrage des contrats, validation CI et revues de code.
-2. `RAPPORT_VICTOR.md` : Backend Accounts/Transactions & MockBankingService.
-3. `RAPPORT_REMY.md` : Ingestion Bancaire universelle OFX/CSV & Déduplication SHA-256.
-4. `RAPPORT_ISHAK.md` : Modélisation Prisma Supabase V2, Seeding & Passerelle API Web.
-5. `RAPPORT_LORIS.md` : Design System shadcn/ui & Shell Responsive Mobile/Desktop.
-6. `RAPPORT_JEREMY.md` : Scène 3D React Three Fiber & Micro-interactions Framer Motion.
-7. `RAPPORT_CLEMENT.md` : Infrastructure de mesure Web Vitals, Streaming SSR & Audit Lighthouse initial.
-8. `RAPPORT_MATHIAS.md` : SEO technique Next.js 15, robots.ts, sitemap.ts & Schema.org JSON-LD.
+Chaque membre ajoute un rapport selon le [modèle court](../../chefferie-de-projet/TEMPLATE_RAPPORT_SEANCE.md), puis l’actualise dans ses PRs de la séance.
 
-*Consultez le template officiel dans [`docs/chefferie-de-projet/TEMPLATE_RAPPORT_SEANCE.md`](../../chefferie-de-projet/TEMPLATE_RAPPORT_SEANCE.md).*
+| Rapport              | Périmètre                                  |
+| -------------------- | ------------------------------------------ |
+| `RAPPORT_ARTHUR.md`  | Outillage, décisions et intégration        |
+| `RAPPORT_VICTOR.md`  | API et calculs de trésorerie               |
+| `RAPPORT_REMY.md`    | Import bancaire et normalisation           |
+| `RAPPORT_ISHAK.md`   | Contrats, données et synthèse patrimoniale |
+| `RAPPORT_LORIS.md`   | Dashboard et parcours utilisateur          |
+| `RAPPORT_JEREMY.md`  | Visualisation et interactions              |
+| `RAPPORT_CLEMENT.md` | Fiabilité du parcours et performance       |
+| `RAPPORT_YANN.md`    | Compte utilisateur et authentification     |
+| `RAPPORT_MATHIAS.md` | Landing page et sources commerciales       |
+
+Le rapport peut être préparé par l’IA. L’auteur le relit, corrige les affirmations inexactes et vérifie les exemples. La revue croisée contrôle le code et un comportement concret ; elle ne se limite pas à constater la présence du document.
+
+À la clôture : montrer le parcours intégré, distinguer les données réelles de développement des simulations, puis consigner les reports. Les captures utiles peuvent être placées dans `assets/` sans données personnelles. Ne pas fabriquer de rapports individuels ou de résultats pour des travaux non réalisés.
