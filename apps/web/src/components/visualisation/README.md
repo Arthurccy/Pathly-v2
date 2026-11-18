@@ -11,7 +11,8 @@ le thème sombre et le mode sans mouvement. Emplacement `components/visualisatio
 | Prop          | Type                  | Défaut    | Rôle                                                                   |
 | ------------- | --------------------- | --------- | ---------------------------------------------------------------------- |
 | `state`       | `VisualState<T>`      | requis    | `loading`, `empty` (aucune donnée), `error` (+ `message`) ou `ready`   |
-| `tone`        | `'light' \| 'dark'`   | `'light'` | Suit le mode clair/sombre du conteneur                                 |
+| `tone`        | `'light' \| 'dark' \| 'auto'` | `'light'` | Thème imposé, ou `auto` : suit la classe `dark` du document (dashboard) |
+| `frame`       | `'card' \| 'none'`    | `'card'`  | `none` : sans cadre ni titre, pour un conteneur qui les fournit (`WidgetSlot`) |
 | `motion`      | `'auto' \| 'reduced'` | `'auto'`  | `auto` respecte `prefers-reduced-motion` ; `reduced` force le statique |
 | `sourceLabel` | `string`              | —         | Badge affiché, ex. « Données fictives » pour une fixture ou la démo    |
 

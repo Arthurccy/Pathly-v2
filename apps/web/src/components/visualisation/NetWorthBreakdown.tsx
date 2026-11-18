@@ -43,6 +43,7 @@ function describe(view: NetWorthView): string {
 export function NetWorthBreakdown({
   state,
   tone = 'light',
+  frame = 'card',
   motion: motionPref = 'auto',
   sourceLabel,
 }: NetWorthBreakdownProps): React.JSX.Element {
@@ -51,7 +52,7 @@ export function NetWorthBreakdown({
   const t = toneClasses(tone);
   const view = useMemo(() => (state.status === 'ready' ? computeNetWorthView(state.data) : null), [state]);
 
-  const common = { tone, titleId, title: 'Répartition du patrimoine', sourceLabel };
+  const common = { tone, frame, titleId, title: 'Répartition du patrimoine', sourceLabel };
 
   if (state.status === 'loading') {
     return (

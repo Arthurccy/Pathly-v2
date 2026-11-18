@@ -16,8 +16,14 @@ export type VisualState<T> =
   | { status: 'error'; message: string }
   | { status: 'ready'; data: T };
 
-/** Thème du conteneur parent : le dashboard actuel gère son propre mode clair/sombre. */
-export type VisualTone = 'light' | 'dark';
+/**
+ * Thème : `light` / `dark` imposés par le parent, ou `auto` pour suivre la classe `dark`
+ * du document (mode sombre du dashboard, variantes `dark:` de Tailwind).
+ */
+export type VisualTone = 'light' | 'dark' | 'auto';
+
+/** `card` : cadre et titre propres ; `none` : intégré dans un conteneur qui fournit déjà cadre et titre. */
+export type VisualFrame = 'card' | 'none';
 
 /**
  * 'auto' respecte `prefers-reduced-motion` ; 'reduced' force la version sans mouvement.
@@ -27,6 +33,7 @@ export type MotionPreference = 'auto' | 'reduced';
 
 export interface VisualCommonProps {
   tone?: VisualTone;
+  frame?: VisualFrame;
   motion?: MotionPreference;
   /** Libellé affiché lorsque les données sont fictives (fixture ou mode démo). */
   sourceLabel?: string;

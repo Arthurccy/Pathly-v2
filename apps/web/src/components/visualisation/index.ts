@@ -9,6 +9,7 @@ export type {
   MotionPreference,
   NetWorthBreakdownProps,
   NetWorthData,
+  VisualFrame,
   VisualState,
   VisualTone,
 } from './contracts';

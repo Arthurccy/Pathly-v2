@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useReducedMotion } from 'framer-motion';
-import type { MotionPreference, VisualTone } from './contracts';
+import type { MotionPreference, VisualFrame, VisualTone } from './contracts';
 
 /** true si le composant doit s'afficher sans mouvement. */
 export function useStaticRendering(motion: MotionPreference = 'auto'): boolean {
@@ -21,7 +21,20 @@ export interface ToneClasses {
   badge: string;
 }
 
+/** `auto` : suit le thème du conteneur via les variantes `dark:` de Tailwind (dashboard de Loris). */
+const AUTO_TONE: ToneClasses = {
+  card: 'bg-white border-slate-200 text-slate-900 dark:bg-slate-900/70 dark:border-slate-700/60 dark:text-slate-100',
+  title: 'text-slate-900 dark:text-white',
+  muted: 'text-slate-500 dark:text-slate-400',
+  track: 'bg-slate-100 dark:bg-slate-800',
+  divider: 'border-slate-200 dark:border-slate-700/60',
+  skeleton: 'bg-slate-200 dark:bg-slate-800',
+  issue: 'bg-amber-50 border-amber-300 text-amber-900 dark:bg-amber-500/10 dark:border-amber-500/40 dark:text-amber-200',
+  badge: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+};
+
 export function toneClasses(tone: VisualTone = 'light'): ToneClasses {
+  if (tone === 'auto') return AUTO_TONE;
   return tone === 'dark'
     ? {
         card: 'bg-slate-900/70 border-slate-700/60 text-slate-100',
@@ -88,6 +101,7 @@ export function Swatch({ fill }: { fill: FillKey }): React.JSX.Element {
 
 interface CardProps {
   tone?: VisualTone;
+  frame?: VisualFrame;
   titleId: string;
   title: string;
   subtitle?: string;
@@ -98,6 +112,7 @@ interface CardProps {
 
 export function VisualCard({
   tone,
+  frame = 'card',
   titleId,
   title,
   subtitle,
@@ -106,6 +121,24 @@ export function VisualCard({
   children,
 }: CardProps): React.JSX.Element {
   const t = toneClasses(tone);
+  if (frame === 'none') {
+    // Le conteneur (ex. WidgetSlot du dashboard) fournit déjà le cadre et le titre de section.
+    return (
+      <div aria-busy={busy || undefined}>
+        {(subtitle || sourceLabel) && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            {subtitle ? <p className={`text-xs ${t.muted}`}>{subtitle}</p> : <span />}
+            {sourceLabel && (
+              <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${t.badge}`}>
+                {sourceLabel}
+              </span>
+            )}
+          </div>
+        )}
+        {children}
+      </div>
+    );
+  }
   return (
     <section
       aria-labelledby={titleId}
@@ -153,7 +186,7 @@ export function ErrorBlock({ message }: { message: string }): React.JSX.Element 
   return (
     <p
       role="alert"
-      className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800"
+      className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
     >
       <span aria-hidden="true">⚠ </span>
       {message}

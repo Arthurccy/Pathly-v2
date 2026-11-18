@@ -5,6 +5,7 @@ import type {
   CashflowSummaryView,
   MotionPreference,
   NetWorthData,
+  VisualFrame,
   VisualState,
   VisualTone,
 } from '../contracts';
@@ -109,8 +110,9 @@ export function VisualisationGallery(): React.JSX.Element {
   const [replay, setReplay] = useState(0);
   const [liveHealth, setLiveHealth] = useState(0);
   const [liveNetWorth, setLiveNetWorth] = useState(0);
+  const [frame, setFrame] = useState<VisualFrame>('card');
   const dark = tone === 'dark';
-  const common = { tone, motion, sourceLabel: fx.FIXTURE_LABEL };
+  const common = { tone, frame, motion, sourceLabel: fx.FIXTURE_LABEL };
 
   return (
     <main className={`min-h-screen p-4 sm:p-8 ${dark ? 'bg-[#070b14] text-slate-100' : 'bg-slate-100 text-slate-900'}`}>
@@ -130,6 +132,14 @@ export function VisualisationGallery(): React.JSX.Element {
             className={BUTTON}
           >
             Forcer sans mouvement
+          </button>
+          <button
+            type="button"
+            onClick={() => setFrame(frame === 'card' ? 'none' : 'card')}
+            aria-pressed={frame === 'none'}
+            className={BUTTON}
+          >
+            Sans cadre (intégré)
           </button>
           <button type="button" onClick={() => setReplay((n) => n + 1)} className={BUTTON}>
             Rejouer les animations

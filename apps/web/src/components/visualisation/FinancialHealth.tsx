@@ -74,6 +74,7 @@ function StatusBadge({ status }: { status: CashflowStatus }): React.JSX.Element 
 export function FinancialHealth({
   state,
   tone = 'light',
+  frame = 'card',
   motion: motionPref = 'auto',
   sourceLabel,
 }: FinancialHealthProps): React.JSX.Element {
@@ -83,7 +84,7 @@ export function FinancialHealth({
   const view = useMemo(() => (state.status === 'ready' ? computeHealthView(state.data) : null), [state]);
 
   const title = 'Santé financière';
-  const common = { tone, titleId, sourceLabel };
+  const common = { tone, frame, titleId, sourceLabel };
 
   if (state.status === 'loading') {
     return (
