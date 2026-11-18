@@ -64,8 +64,13 @@ export const netWorthError: VisualState<NetWorthData> = {
 };
 
 // --- Santé financière ---------------------------------------------------------
+//
+// Deux familles :
+// - `healthApi*` / `healthResultOnly` : format exact de `CashflowSummaryDto` (contrat de Victor) ;
+// - `healthHealthy` / `healthTight` / `healthIncomplete` : même réponse + bloc `inputs`,
+//   PROPOSITION à valider avec Victor et Ishak (affichage de la cascade du calcul).
 
-/** Exemple de référence : 1 500 − 800 − 200 = 500 € disponibles sur la période. */
+/** Proposition `inputs` — exemple de référence : 1 500 − 800 − 200 = 500 €. */
 export const healthHealthy: VisualState<CashflowSummaryView> = {
   status: 'ready',
   data: {
@@ -78,7 +83,7 @@ export const healthHealthy: VisualState<CashflowSummaryView> = {
   },
 };
 
-/** Situation tendue : 900 − 800 − 200 = −100 € (déficit non ramené à zéro). */
+/** Proposition `inputs` — situation tendue : 900 − 800 − 200 = −100 € (déficit non ramené à zéro). */
 export const healthTight: VisualState<CashflowSummaryView> = {
   status: 'ready',
   data: {
@@ -91,7 +96,7 @@ export const healthTight: VisualState<CashflowSummaryView> = {
   },
 };
 
-/** Donnée requise manquante (charges) → INCOMPLETE, montant null. */
+/** Proposition `inputs` — donnée requise manquante (charges) → INCOMPLETE, montant null. */
 export const healthIncomplete: VisualState<CashflowSummaryView> = {
   status: 'ready',
   data: {
@@ -104,8 +109,20 @@ export const healthIncomplete: VisualState<CashflowSummaryView> = {
   },
 };
 
+/** Contrat actuel — situation tendue : déficit de 100 €, statut SHORTFALL. */
+export const healthApiShortfall: VisualState<CashflowSummaryView> = {
+  status: 'ready',
+  data: {
+    month: '2026-10',
+    asOfDate: '2026-10-15',
+    safeToSpendPeriod: -100,
+    status: 'SHORTFALL',
+    currency: 'EUR',
+  },
+};
+
 /**
- * Réponse INCOMPLETE au format exact de l'API de Victor (sans `inputs`) :
+ * Contrat actuel — réponse INCOMPLETE au format exact de l'API de Victor (sans `inputs`) :
  * aucun compte courant → raison AVAILABLE_BALANCE_MISSING.
  */
 export const healthApiIncomplete: VisualState<CashflowSummaryView> = {
@@ -120,7 +137,7 @@ export const healthApiIncomplete: VisualState<CashflowSummaryView> = {
   },
 };
 
-/** Exemple exact de docs/architecture/CONTRAT_CASHFLOW_S2.md (réponse de l'API, sans `inputs`). */
+/** Contrat actuel — exemple exact de docs/architecture/CONTRAT_CASHFLOW_S2.md : 500 €, AVAILABLE. */
 export const healthResultOnly: VisualState<CashflowSummaryView> = {
   status: 'ready',
   data: {

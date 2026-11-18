@@ -1,14 +1,17 @@
 /**
- * Tests des calculs de visualisation — exécutés avec le runner natif de Node (>= 22.18,
- * suppression des types TypeScript intégrée) : `pnpm --filter @pathly/web test`.
+ * Tests des calculs et de l'adaptateur de visualisation — runner natif de Node, sans dépendance :
+ *   node --experimental-strip-types --test apps/web/test/visualisation.test.ts
+ * (depuis la racine du dépôt ; testé avec Node 22.20).
  * Les valeurs attendues proviennent des exemples de docs/architecture/CONTRATS_SEANCE_2.md,
  * calculés à la main, et non d'une recopie des formules du code.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { apiResponseToVisualState, DEFAULT_ERROR_MESSAGE } from '../src/components/visualisation/adapter.ts';
 import { computeHealthView, computeNetWorthView, toCents } from '../src/components/visualisation/compute.ts';
 import {
   healthApiIncomplete,
+  healthApiShortfall,
   healthHealthy,
   healthIncomplete,
   healthResultOnly,
@@ -154,6 +157,47 @@ test('réponse API INCOMPLETE : raisons traduites, montant null', () => {
   assert.equal(v.resultCents, null);
   assert.deepEqual(v.missing, ['Solde disponible (aucun compte courant)']);
   assert.deepEqual(v.issues, []);
+});
+
+test('réponse API SHORTFALL : −100 € conservés, aucune alerte', () => {
+  const v = computeHealthView(ready(healthApiShortfall));
+  assert.equal(v.kind, 'resultOnly');
+  if (v.kind !== 'resultOnly') return;
+  assert.equal(v.resultCents, -10_000);
+  assert.deepEqual(v.issues, []);
+});
+
+test('adaptateur : succès avec données → ready', () => {
+  const state = apiResponseToVisualState({ success: true, data: { value: 1 } });
+  assert.deepEqual(state, { status: 'ready', data: { value: 1 } });
+});
+
+test('adaptateur : succès sans données → empty (pas de zéro inventé)', () => {
+  assert.deepEqual(apiResponseToVisualState({ success: true }), { status: 'empty' });
+  assert.deepEqual(apiResponseToVisualState({ success: true, data: null }), { status: 'empty' });
+});
+
+test('adaptateur : échec → error avec le message reçu, ou message par défaut', () => {
+  assert.deepEqual(
+    apiResponseToVisualState({
+      success: false,
+      error: { code: 'NETWORK_ERROR', message: 'Impossible de joindre le serveur API NestJS' },
+    }),
+    { status: 'error', message: 'Impossible de joindre le serveur API NestJS' },
+  );
+  assert.deepEqual(apiResponseToVisualState({ success: false }), {
+    status: 'error',
+    message: DEFAULT_ERROR_MESSAGE,
+  });
+});
+
+test('adaptateur : échec avec données présentes reste une erreur', () => {
+  const state = apiResponseToVisualState({
+    success: false,
+    data: { value: 1 },
+    error: { code: 'HTTP_500', message: 'Erreur serveur' },
+  });
+  assert.equal(state.status, 'error');
 });
 
 test('INCOMPLETE sans raison ni entrées : signalé', () => {
