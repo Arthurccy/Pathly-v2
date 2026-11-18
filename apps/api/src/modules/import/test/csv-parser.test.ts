@@ -266,6 +266,35 @@ async function runTests() {
     assert.strictEqual(res.errors[0].field, 'amount');
   });
 
+  // 12. Revue Victor 2 - Point 1 : En-tête non reconnu avec débit/crédit bloque l'analyse sans devinette
+  test('12. Revue Victor 2 (Bloquant 1) : En-tête non reconnu (débit/crédit) bloque immédiatement sans deviner les colonnes', () => {
+    const csvDebitCredit = `date;libelle;debit;credit\n2026-10-12;CB MONOPRIX;42,50;\n2026-10-13;SALAIRE;;2100,00`;
+    const res = csvParser.parse(csvDebitCredit);
+
+    // Ne doit pas deviner 0/1/2 et importer la dépense en faux revenu +42,50 €
+    assert.strictEqual(res.validCount, 0, 'Aucune transaction ne doit être extraite sur en-tête inconnu');
+    assert.strictEqual(res.errorCount, 1, 'Une erreur bloquante de format doit être levée');
+    assert.strictEqual(res.errors[0].field, 'format');
+    assert.strictEqual(res.errors[0].lineNumber, 1);
+  });
+
+  // 13. Revue Victor 2 - Point 2 : Mapping par index sans hasHeader ne perd pas la ligne 1
+  test('13. Revue Victor 2 (Bloquant 2) : Mapping par index sans hasHeader préserve la ligne 1 si valide', () => {
+    const csvData = `2026-10-12;CB MONOPRIX;-42,50\n2026-10-13;SALAIRE;2100,00`;
+    const res = csvParser.parse(csvData, {
+      dateColumn: 0,
+      descriptionColumn: 1,
+      amountColumn: 2,
+    });
+
+    assert.strictEqual(res.validCount, 2, 'Les 2 transactions doivent être préservées');
+    assert.strictEqual(res.errorCount, 0);
+    assert.strictEqual(res.transactions[0].rawDescription, 'CB MONOPRIX');
+    assert.strictEqual(res.transactions[0].amount, -42.50);
+    assert.strictEqual(res.transactions[1].rawDescription, 'SALAIRE');
+    assert.strictEqual(res.transactions[1].amount, 2100.00);
+  });
+
   console.log(`\nTests terminés : ${passed} réussis, ${failed} échoués.\n`);
   if (failed > 0) {
     process.exit(1);

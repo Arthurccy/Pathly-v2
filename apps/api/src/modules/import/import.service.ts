@@ -87,8 +87,12 @@ export class ImportService {
 
     let targetAccountId = dto.accountId;
     let targetCurrency = dto.currency || 'EUR';
+    const targetName = dto.accountName || 'Compte relevé importé';
 
-    // 2. Détermination du compte cible : existant vérifié ou auto-créé
+    let existingConnection: any = null;
+    let existingAccount: any = null;
+
+    // 2. Résolution en LECTURE SEULE du compte cible (sans écriture anticipée en BDD)
     if (targetAccountId) {
       const account = await prisma.bankAccount.findFirst({
         where: {
@@ -106,9 +110,15 @@ export class ImportService {
         );
       }
       targetCurrency = account.currency || targetCurrency;
+
+      // Rejet si initialBalance est fourni alors que le compte existe déjà (Victor Amélioration 4)
+      if (dto.initialBalance !== undefined) {
+        throw new BadRequestException(
+          'Le compte bancaire existe déjà : le paramètre initialBalance ne peut être renseigné que lors de la création d’un nouveau compte.',
+        );
+      }
     } else {
-      // 2bis. Résolution ou auto-création de la connexion et du compte d'import
-      let connection = await prisma.bankConnection.findFirst({
+      existingConnection = await prisma.bankConnection.findFirst({
         where: {
           userId,
           institutionName: 'Relevé importé',
@@ -118,6 +128,38 @@ export class ImportService {
         },
       });
 
+      // Réutilisation stricte du compte portant le MÊME nom (aucun repli sur accounts[0] - Victor Amélioration 3)
+      existingAccount = existingConnection?.accounts?.find(
+        (acc: any) => acc.name === targetName,
+      );
+
+      if (existingAccount) {
+        targetAccountId = existingAccount.id;
+        targetCurrency = existingAccount.currency || targetCurrency;
+
+        // Rejet si initialBalance est fourni alors que le compte existe déjà
+        if (dto.initialBalance !== undefined) {
+          throw new BadRequestException(
+            'Le compte bancaire d’import existe déjà : le paramètre initialBalance ne peut être renseigné que lors de la création d’un nouveau compte.',
+          );
+        }
+      }
+    }
+
+    // 3. Contrôle de cohérence des devises AVANT toute écriture en BDD (Victor Amélioration 5)
+    // Empêche la création d'un compte/connexion orphelin vide en cas d'erreur 400
+    const mismatchedCurrency = previewResult.transactions.find(
+      (t) => t.currency && t.currency !== targetCurrency,
+    );
+    if (mismatchedCurrency) {
+      throw new BadRequestException(
+        `Écart de devise détecté : le compte cible est en ${targetCurrency} mais le relevé contient des transactions en ${mismatchedCurrency.currency}. Aucune conversion implicite n'est autorisée.`,
+      );
+    }
+
+    // 4. Écritures en BDD : création différée de la connexion et du compte si nécessaire
+    if (!targetAccountId) {
+      let connection = existingConnection;
       if (!connection) {
         connection = await prisma.bankConnection.create({
           data: {
@@ -131,38 +173,17 @@ export class ImportService {
         });
       }
 
-      // Réutilisation du compte d'import existant pour éviter les doublons de comptes lors des réimports
-      const targetName = dto.accountName || 'Compte relevé importé';
-      const existingAccount =
-        connection.accounts?.find((acc) => acc.name === targetName) ||
-        connection.accounts?.[0];
-
-      if (existingAccount) {
-        targetAccountId = existingAccount.id;
-        targetCurrency = existingAccount.currency || targetCurrency;
-      } else {
-        const initialBalance = dto.initialBalance !== undefined ? dto.initialBalance : 0;
-        const newAccount = await prisma.bankAccount.create({
-          data: {
-            connectionId: connection.id,
-            name: targetName,
-            type: 'CHECKING',
-            currentBalance: initialBalance,
-            currency: targetCurrency,
-          },
-        });
-        targetAccountId = newAccount.id;
-      }
-    }
-
-    // 2ter. Vérification de cohérence des devises (rejet strict si écart, aucune conversion implicite)
-    const mismatchedCurrency = previewResult.transactions.find(
-      (t) => t.currency && t.currency !== targetCurrency,
-    );
-    if (mismatchedCurrency) {
-      throw new BadRequestException(
-        `Écart de devise détecté : le compte cible est en ${targetCurrency} mais le relevé contient des transactions en ${mismatchedCurrency.currency}. Aucune conversion implicite n'est autorisée.`,
-      );
+      const initialBalance = dto.initialBalance !== undefined ? dto.initialBalance : 0;
+      const newAccount = await prisma.bankAccount.create({
+        data: {
+          connectionId: connection.id,
+          name: targetName,
+          type: 'CHECKING',
+          currentBalance: initialBalance,
+          currency: targetCurrency,
+        },
+      });
+      targetAccountId = newAccount.id;
     }
 
     // 3. Gestion du réimport et politique anti-doublons

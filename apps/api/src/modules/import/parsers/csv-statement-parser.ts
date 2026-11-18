@@ -45,10 +45,11 @@ export class CsvStatementParser implements IStatementParser {
     let startIndex = 0;
     const firstLine = rawLines[0]?.trim();
 
-    // Analyse de l'en-tête et détection sans perte silencieuse
+    // Analyse de l'en-tête et détection sans devinette ni perte silencieuse
     if (firstLine && firstLine.length > 0) {
       const headerCols = this.parseCsvLine(firstLine, delimiter).map((col) => col.toLowerCase().trim());
 
+      let stringHeadersMatched = false;
       if (typeof config?.dateColumn === 'string') {
         dateCol = headerCols.indexOf(config.dateColumn.toLowerCase().trim());
       }
@@ -59,6 +60,17 @@ export class CsvStatementParser implements IStatementParser {
         amountCol = headerCols.indexOf(config.amountColumn.toLowerCase().trim());
       }
 
+      if (
+        typeof config?.dateColumn === 'string' &&
+        typeof config?.descriptionColumn === 'string' &&
+        typeof config?.amountColumn === 'string' &&
+        dateCol !== -1 &&
+        descCol !== -1 &&
+        amountCol !== -1
+      ) {
+        stringHeadersMatched = true;
+      }
+
       const detected = this.detectColumnsFromHeader(headerCols);
       if (detected) {
         if (dateCol === -1) dateCol = detected.dateCol;
@@ -66,33 +78,52 @@ export class CsvStatementParser implements IStatementParser {
         if (amountCol === -1) amountCol = detected.amountCol;
       }
 
-      const hasRecognizedHeader =
-        detected !== null || (dateCol !== -1 && descCol !== -1 && amountCol !== -1);
+      // Un en-tête n'est formellement reconnu par son texte QUE si :
+      // 1. Les mots-clés textuels ont matché (date, libelle, montant)
+      // 2. Ou les noms de colonnes explicitement fournis ont tous été trouvés
+      // (Attention : un mapping par index numérique seul ne prouve PAS que la ligne 1 est un en-tête textuel !)
+      const hasRecognizedHeaderText = detected !== null || stringHeadersMatched;
+
+      // Vérifier si la première ligne est en réalité une ligne de transaction valide
+      const candidateCols = this.parseCsvLine(firstLine, delimiter);
+      const testDateCol = dateCol !== -1 ? dateCol : 0;
+      const testAmountCol = amountCol !== -1 ? amountCol : 2;
+      const looksLikeData = this.looksLikeValidTransaction(candidateCols, testDateCol, testAmountCol);
 
       if (hasHeaderConfig === false) {
         // Pas d'en-tête explicitement déclaré
         startIndex = 0;
-      } else if (hasRecognizedHeader) {
-        // En-tête formellement reconnu
+      } else if (hasRecognizedHeaderText) {
+        // En-tête textuel formellement reconnu
         startIndex = 1;
+      } else if (looksLikeData) {
+        // Pas d'en-tête reconnu, mais la ligne 1 est une transaction valide :
+        // Elle ne doit pas être sautée (aucune perte silencieuse même avec mapping par index)
+        startIndex = 0;
       } else {
-        // En-tête non reconnu par les mots-clés : vérifier si la ligne 1 ressemble à une transaction valide
-        const candidateCols = this.parseCsvLine(firstLine, delimiter);
-        const looksLikeData = this.looksLikeValidTransaction(candidateCols);
+        // Ligne 1 ni reconnue en en-tête ni en transaction valide :
+        // C'est un en-tête non reconnu (ex: date;libelle;debit;credit).
+        // Bloquant (Revue Victor Point 1) : arrêt immédiat de l'analyse, AUCUNE colonne devinée.
+        errors.push({
+          lineNumber: 1,
+          rawContent: firstLine,
+          field: 'format',
+          reason: `En-tête CSV non reconnu : colonnes date, libellé ou montant introuvables. Analyse interrompue pour éviter toute importation corrompue.`,
+        });
 
-        if (looksLikeData) {
-          // Ligne 1 analysée comme transaction : aucune perte silencieuse
-          startIndex = 0;
-        } else {
-          // Ligne 1 ni reconnue en en-tête ni en transaction valide : signalée en erreur explicite
-          errors.push({
-            lineNumber: 1,
-            rawContent: firstLine,
-            field: 'format',
-            reason: `En-tête CSV non reconnu : colonnes date, libellé ou montant introuvables`,
-          });
-          startIndex = 1;
-        }
+        const fileFingerprint = crypto
+          .createHash('sha256')
+          .update(content.trim())
+          .digest('hex');
+
+        return {
+          totalRows: 1,
+          validCount: 0,
+          errorCount: 1,
+          transactions: [],
+          errors,
+          fileFingerprint,
+        };
       }
     }
 
@@ -301,8 +332,27 @@ export class CsvStatementParser implements IStatementParser {
   /**
    * Vérifie si une ligne ressemble à une transaction valide (date valide + montant valide)
    */
-  private looksLikeValidTransaction(cols: string[]): boolean {
+  private looksLikeValidTransaction(
+    cols: string[],
+    dateCol = 0,
+    amountCol = 2,
+  ): boolean {
     if (cols.length < 2) return false;
+
+    // 1. Tester la colonne date indiquée
+    const d = this.normalizeDate(cols[dateCol]?.trim() ?? '');
+    if (d) {
+      if (amountCol < cols.length && this.normalizeAmount(cols[amountCol]?.trim() ?? '') !== null) {
+        return true;
+      }
+      for (let i = 0; i < cols.length; i++) {
+        if (i !== dateCol && this.normalizeAmount(cols[i]?.trim() ?? '') !== null) {
+          return true;
+        }
+      }
+    }
+
+    // 2. Si non concluant, tester si col 0 est date
     const d0 = this.normalizeDate(cols[0]?.trim() ?? '');
     if (d0) {
       for (let i = 1; i < cols.length; i++) {
@@ -311,6 +361,7 @@ export class CsvStatementParser implements IStatementParser {
         }
       }
     }
+
     return false;
   }
 

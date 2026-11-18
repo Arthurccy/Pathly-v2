@@ -236,6 +236,120 @@ async function runCommitTests() {
     );
   });
 
+  // 7. Revue Victor 2 - Amélioration 4 : Rejet si initialBalance est fourni alors que le compte existe déjà
+  await test('7. Revue Victor 2 (Amélioration 4) : Rejet BadRequest si initialBalance est fourni sur compte existant', async () => {
+    const originalFindFirst = prisma.bankAccount.findFirst;
+
+    (prisma.bankAccount as any).findFirst = async () => ({
+      id: validUuid1,
+      currency: 'EUR',
+    });
+
+    let errorThrown: any = null;
+    try {
+      await importService.commit('user-remi', {
+        accountId: validUuid1,
+        initialBalance: 1500.0,
+        rawContent: 'date;libelle;montant\n2026-10-12;CB MONOPRIX;-42,50',
+        format: StatementFormat.CSV,
+      });
+    } catch (err) {
+      errorThrown = err;
+    } finally {
+      prisma.bankAccount.findFirst = originalFindFirst;
+    }
+
+    assert.ok(errorThrown, 'Doit lever une exception si initialBalance sur compte existant');
+    assert.strictEqual(errorThrown.status, 400);
+    assert.ok(
+      errorThrown.message.includes('existe déjà'),
+      'Doit mentionner que le compte existe déjà',
+    );
+  });
+
+  // 8. Revue Victor 2 - Amélioration 3 : Pas de repli sur accounts[0] si accountName est différent
+  await test('8. Revue Victor 2 (Amélioration 3) : Création d’un nouveau compte si accountName est différent (pas de repli accounts[0])', async () => {
+    const originalConnFindFirst = prisma.bankConnection.findFirst;
+    const originalAccCreate = prisma.bankAccount.create;
+    const originalTxCreate = prisma.bankTransaction.create;
+    const originalTxFindMany = prisma.bankTransaction.findMany;
+
+    // La connexion possède déjà un "Compte Courant"
+    (prisma.bankConnection as any).findFirst = async () => ({
+      id: 'conn-auto-1',
+      accounts: [
+        {
+          id: 'acc-courant-1',
+          name: 'Compte Courant',
+          currency: 'EUR',
+        },
+      ],
+    });
+
+    let createdAccountName: string | null = null;
+    (prisma.bankAccount as any).create = async ({ data }: any) => {
+      createdAccountName = data.name;
+      return { id: 'acc-livret-1', ...data };
+    };
+    (prisma.bankTransaction as any).findMany = async () => [];
+    (prisma.bankTransaction as any).create = async ({ data }: any) => ({ id: 'tx-1', ...data });
+
+    try {
+      const result = await importService.commit('user-remi', {
+        accountName: 'Livret A', // Nom différent -> ne doit pas aller dans 'Compte Courant'
+        rawContent: 'date;libelle;montant\n2026-10-12;VIREMENT EPARGNE;500,00',
+        format: StatementFormat.CSV,
+      });
+
+      assert.strictEqual(createdAccountName, 'Livret A', 'Un nouveau compte "Livret A" doit être créé');
+      assert.strictEqual(result.accountId, 'acc-livret-1');
+    } finally {
+      prisma.bankConnection.findFirst = originalConnFindFirst;
+      prisma.bankAccount.create = originalAccCreate;
+      prisma.bankTransaction.create = originalTxCreate;
+      prisma.bankTransaction.findMany = originalTxFindMany;
+    }
+  });
+
+  // 9. Revue Victor 2 - Amélioration 5 : Ordre des contrôles - aucune écriture BDD en cas de 400
+  await test('9. Revue Victor 2 (Amélioration 5) : Aucune écriture en base (connexion ni compte) si rejet devise', async () => {
+    const originalConnFindFirst = prisma.bankConnection.findFirst;
+    const originalConnCreate = prisma.bankConnection.create;
+    const originalAccCreate = prisma.bankAccount.create;
+
+    (prisma.bankConnection as any).findFirst = async () => null;
+
+    let writeAttempted = false;
+    (prisma.bankConnection as any).create = async () => {
+      writeAttempted = true;
+      return { id: 'conn-1' };
+    };
+    (prisma.bankAccount as any).create = async () => {
+      writeAttempted = true;
+      return { id: 'acc-1' };
+    };
+
+    let errorThrown: any = null;
+    try {
+      // Relevé contenant des USD mais demandé pour compte EUR
+      await importService.commit('user-remi', {
+        currency: 'EUR',
+        rawContent: '<OFX><CURDEF>USD<BANKTRANLIST><STMTTRN><DTPOSTED>20261012<TRNAMT>-10.00<NAME>TEST</STMTTRN></BANKTRANLIST></OFX>',
+        format: StatementFormat.OFX,
+      });
+    } catch (err) {
+      errorThrown = err;
+    } finally {
+      prisma.bankConnection.findFirst = originalConnFindFirst;
+      prisma.bankConnection.create = originalConnCreate;
+      prisma.bankAccount.create = originalAccCreate;
+    }
+
+    assert.ok(errorThrown, 'Doit lever une exception');
+    assert.strictEqual(errorThrown.status, 400);
+    assert.strictEqual(writeAttempted, false, 'Aucune écriture en BDD ne doit avoir eu lieu avant le rejet de devise');
+  });
+
   console.log(`\nTests commit terminés : ${passed} réussis, ${failed} échoués.\n`);
   if (failed > 0) {
     process.exit(1);

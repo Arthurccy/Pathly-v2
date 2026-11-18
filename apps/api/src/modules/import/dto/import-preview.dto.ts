@@ -133,7 +133,7 @@ export class ImportCommitRequestDto extends ImportPreviewRequestDto {
     example: 1500.0,
   })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   initialBalance?: number;
 
   @ApiPropertyOptional({
