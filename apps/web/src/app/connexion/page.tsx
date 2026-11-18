@@ -2,8 +2,10 @@
 
 import Link from 'next/link';
 import React, { FormEvent, useEffect, useState } from 'react';
+import { ApiClient } from '@/lib/api-client';
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser';
 import {
+  loadAccounts,
   signIn,
   signOut,
   SupabaseAuthPort,
@@ -12,6 +14,7 @@ import {
 export default function ConnexionPage(): React.JSX.Element {
   const [authClient, setAuthClient] = useState<SupabaseAuthPort | null>(null);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [accountsCount, setAccountsCount] = useState<number | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoadingSession, setIsLoadingSession] = useState(true);
@@ -41,13 +44,16 @@ export default function ConnexionPage(): React.JSX.Element {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (isMounted) {
         setSessionEmail(session?.user.email ?? null);
+        if (!session) {
+          setAccountsCount(null);
+        }
         setIsLoadingSession(false);
       }
     });
 
     void supabase.auth
       .getSession()
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => {
         if (!isMounted) {
           return;
         }
@@ -56,6 +62,20 @@ export default function ConnexionPage(): React.JSX.Element {
           setErrorMessage(error.message);
         } else {
           setSessionEmail(data.session?.user.email ?? null);
+          if (data.session) {
+            const result = await loadAccounts(
+              ApiClient,
+              data.session.access_token,
+            );
+            if (!isMounted) {
+              return;
+            }
+            if (result.success) {
+              setAccountsCount(result.accounts.length);
+            } else {
+              setErrorMessage(result.message);
+            }
+          }
         }
         setIsLoadingSession(false);
       })
@@ -87,7 +107,7 @@ export default function ConnexionPage(): React.JSX.Element {
     setNotice(null);
 
     try {
-      const result = await signIn(authClient, {
+      const result = await signIn(authClient, ApiClient, {
         email: email.trim(),
         password,
       });
@@ -98,8 +118,11 @@ export default function ConnexionPage(): React.JSX.Element {
       }
 
       setSessionEmail(result.email);
+      setAccountsCount(result.accounts.length);
       setPassword('');
-      setNotice('Connexion réussie.');
+      setNotice(
+        `Connexion réussie. ${result.accounts.length} compte(s) chargé(s).`,
+      );
     } catch (error: unknown) {
       setErrorMessage(
         error instanceof Error
@@ -128,6 +151,7 @@ export default function ConnexionPage(): React.JSX.Element {
       }
 
       setSessionEmail(null);
+      setAccountsCount(null);
       setPassword('');
       setNotice('Vous êtes déconnecté.');
     } catch (error: unknown) {
@@ -183,6 +207,11 @@ export default function ConnexionPage(): React.JSX.Element {
             <p className="text-sm text-slate-300">
               Session active pour <span className="font-medium">{sessionEmail}</span>
             </p>
+            {accountsCount !== null && (
+              <p className="text-sm text-slate-400" role="status">
+                {accountsCount} compte(s) bancaire(s) récupéré(s) depuis l’API.
+              </p>
+            )}
             <div className="flex flex-col gap-3">
               <Link
                 href="/"

@@ -1,13 +1,19 @@
+import type { ApiResponse, BankAccountDto } from '@pathly/shared-types';
+
 export interface LoginCredentials {
   email: string;
   password: string;
+}
+
+export interface AccountsApiPort {
+  getAccounts(jwtToken: string): Promise<ApiResponse<BankAccountDto[]>>;
 }
 
 export interface SupabaseAuthPort {
   signInWithPassword(credentials: LoginCredentials): Promise<{
     data: {
       user: { email?: string | null } | null;
-      session: object | null;
+      session: { access_token: string } | null;
     };
     error: { message: string } | null;
   }>;
@@ -17,15 +23,43 @@ export interface SupabaseAuthPort {
 }
 
 export type AuthActionResult =
-  | { success: true; email: string }
+  | { success: true; email: string; accounts: BankAccountDto[] }
   | { success: false; message: string };
 
 export type SignOutResult =
   | { success: true }
   | { success: false; message: string };
 
+export type AccountsLoadResult =
+  | { success: true; accounts: BankAccountDto[] }
+  | { success: false; message: string };
+
+export async function loadAccounts(
+  api: AccountsApiPort,
+  accessToken: string,
+): Promise<AccountsLoadResult> {
+  const response = await api.getAccounts(accessToken);
+
+  if (!response.success) {
+    return {
+      success: false,
+      message: response.error?.message ?? 'Impossible de charger vos comptes.',
+    };
+  }
+
+  if (!response.data) {
+    return {
+      success: false,
+      message: 'La réponse de l’API comptes est incomplète.',
+    };
+  }
+
+  return { success: true, accounts: response.data };
+}
+
 export async function signIn(
   auth: SupabaseAuthPort,
+  api: AccountsApiPort,
   credentials: LoginCredentials,
 ): Promise<AuthActionResult> {
   const { data, error } = await auth.signInWithPassword(credentials);
@@ -41,9 +75,15 @@ export async function signIn(
     };
   }
 
+  const accountsResult = await loadAccounts(api, data.session.access_token);
+  if (!accountsResult.success) {
+    return accountsResult;
+  }
+
   return {
     success: true,
     email: data.user.email ?? credentials.email,
+    accounts: accountsResult.accounts,
   };
 }
 
