@@ -4,6 +4,7 @@ import { PowensModule } from './modules/powens/powens.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { SyncModule } from './modules/sync/sync.module';
+import { ImportModule } from './modules/import/import.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { SyncModule } from './modules/sync/sync.module';
     PowensModule,
     AccountsModule,
     TransactionsModule,
+    ImportModule,
   ],
 })
 export class AppModule {}

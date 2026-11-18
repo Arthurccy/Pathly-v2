@@ -177,7 +177,7 @@ model LoanCredit {
   name                    String      // ex: "Prêt Résidence Principale CIC", "Crédit Auto BMW"
   lenderInstitution       String      // ex: "CIC", "BNP", "Boursorama"
   institutionLogo         String?
-  loanType                LoanType    @default(PERSONAL)
+  loanType                LoanType    @default(CONSUMER)
   initialAmount           Decimal     @db.Decimal(12, 2)
   remainingCapital        Decimal     @db.Decimal(12, 2)
   interestRate            Decimal     @db.Decimal(5, 2) // ex: 3.45%
