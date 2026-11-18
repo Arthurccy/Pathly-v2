@@ -6,6 +6,8 @@ import {
   IsEnum,
   IsBoolean,
   IsNumber,
+  IsUUID,
+  IsIn,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -23,7 +25,7 @@ export class CsvMappingDto {
 
   @ApiPropertyOptional({ example: ';' })
   @IsOptional()
-  @IsString()
+  @IsIn([';', ',', '\t', '|'])
   delimiter?: ';' | ',' | '\t' | '|';
 
   @ApiPropertyOptional({ example: 0, description: 'Index (0-based) ou nom de la colonne date' })
@@ -72,7 +74,7 @@ export class ImportPreviewRequestDto {
     example: ';',
   })
   @IsOptional()
-  @IsString()
+  @IsIn([';', ',', '\t', '|'])
   delimiter?: ';' | ',' | '\t' | '|';
 
   @ApiPropertyOptional({
@@ -114,7 +116,7 @@ export class ImportCommitRequestDto extends ImportPreviewRequestDto {
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsOptional()
-  @IsString()
+  @IsUUID()
   accountId?: string;
 
   @ApiPropertyOptional({

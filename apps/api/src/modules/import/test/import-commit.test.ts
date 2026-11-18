@@ -22,12 +22,15 @@ async function runCommitTests() {
     }
   }
 
+  const validUuid1 = '123e4567-e89b-12d3-a456-426614174001';
+  const validUuid2 = '123e4567-e89b-12d3-a456-426614174002';
+
   // 1. Rejet si contenu sans aucune transaction valide
   await test('1. Rejet BadRequest si le contenu ne contient aucune transaction valide', async () => {
     let errorThrown: any = null;
     try {
       await importService.commit('user-123', {
-        accountId: 'acc-1',
+        accountId: validUuid1,
         rawContent: 'date;libelle;montant\ndate_invalide;desc;montant_invalide',
         format: StatementFormat.CSV,
       });
@@ -47,7 +50,7 @@ async function runCommitTests() {
     let errorThrown: any = null;
     try {
       await importService.commit('user-hacker', {
-        accountId: 'compte-victime',
+        accountId: validUuid2,
         rawContent: 'date;libelle;montant\n2026-10-12;VIREMENT PIRATE;1000,00',
         format: StatementFormat.CSV,
       });
@@ -61,15 +64,15 @@ async function runCommitTests() {
     assert.strictEqual(errorThrown.status, 403, 'Code HTTP doit être 403 Forbidden');
   });
 
-  // 3. Cas nominal avec persistance et détection de doublons existants en BDD
-  await test('3. Persistance & Anti-doublons : détection des transactions déjà en base', async () => {
+  // 3. Cas nominal avec persistance et détection de doublons existants en BDD + détail des doublons ignorés
+  await test('3. Persistance & Anti-doublons : détection et détails des transactions déjà en base', async () => {
     const originalFindFirst = prisma.bankAccount.findFirst;
     const originalFindMany = prisma.bankTransaction.findMany;
     const originalCreate = prisma.bankTransaction.create;
 
     // Compte autorisé
     (prisma.bankAccount as any).findFirst = async () => ({
-      id: 'acc-remi-1',
+      id: validUuid1,
       currency: 'EUR',
     });
 
@@ -91,7 +94,7 @@ async function runCommitTests() {
 
     try {
       const result = await importService.commit('user-remi', {
-        accountId: 'acc-remi-1',
+        accountId: validUuid1,
         rawContent: 'date;libelle;montant\n2026-10-12;CB MONOPRIX PARIS;-42,50\n2026-10-13;SALAIRE;2100,00',
         format: StatementFormat.CSV,
         skipDuplicates: true,
@@ -99,6 +102,9 @@ async function runCommitTests() {
 
       assert.strictEqual(result.totalRead, 2);
       assert.strictEqual(result.skippedDuplicatesCount, 1, 'Monoprix doit être ignoré car déjà présent en BDD');
+      assert.strictEqual(result.skippedDuplicates.length, 1, 'La liste détaillée des doublons doit être fournie');
+      assert.strictEqual(result.skippedDuplicates[0].rawDescription, 'CB MONOPRIX PARIS');
+      assert.strictEqual(result.skippedDuplicates[0].amount, -42.50);
       assert.strictEqual(result.importedCount, 1, 'Seul le salaire doit être persisté');
       assert.strictEqual(createdList.length, 1);
       assert.strictEqual(createdList[0].rawDescription, 'SALAIRE');
@@ -196,6 +202,38 @@ async function runCommitTests() {
       prisma.bankTransaction.findMany = originalTxFindMany;
       prisma.bankTransaction.create = originalTxCreate;
     }
+  });
+
+  // 6. Revue Victor Point 8 : Rejet strict en cas d'écart de devise entre le relevé et le compte cible
+  await test('6. Revue Victor Point 8 : Rejet BadRequest si la devise du relevé ne correspond pas au compte', async () => {
+    const originalFindFirst = prisma.bankAccount.findFirst;
+
+    // Compte cible libellé en USD
+    (prisma.bankAccount as any).findFirst = async () => ({
+      id: validUuid1,
+      currency: 'USD',
+    });
+
+    let errorThrown: any = null;
+    try {
+      await importService.commit('user-remi', {
+        accountId: validUuid1,
+        rawContent: 'date;libelle;montant\n2026-10-12;CB MONOPRIX;-42,50',
+        format: StatementFormat.CSV,
+        currency: 'EUR', // Relevé en EUR sur compte USD -> rejet
+      });
+    } catch (err) {
+      errorThrown = err;
+    } finally {
+      prisma.bankAccount.findFirst = originalFindFirst;
+    }
+
+    assert.ok(errorThrown, 'Doit lever une exception pour écart de devise');
+    assert.strictEqual(errorThrown.status, 400);
+    assert.ok(
+      errorThrown.message.includes('Écart de devise détecté'),
+      'Le message doit expliciter le refus de conversion implicite',
+    );
   });
 
   console.log(`\nTests commit terminés : ${passed} réussis, ${failed} échoués.\n`);

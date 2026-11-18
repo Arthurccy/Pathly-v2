@@ -6,6 +6,7 @@ import {
   NormalizedImportTransaction,
   ParseResult,
 } from './statement-parser.interface';
+import { isValidDate, parseStrictAmount } from './parser-utils';
 
 export class CsvStatementParser implements IStatementParser {
   readonly supportedFormat = 'CSV' as const;
@@ -34,7 +35,7 @@ export class CsvStatementParser implements IStatementParser {
 
     // Détection du délimiteur si non spécifié
     const delimiter = config?.delimiter ?? this.detectDelimiter(rawLines);
-    const hasHeader = config?.hasHeader ?? true;
+    const hasHeaderConfig = config?.hasHeader;
 
     // Détermination de l'index des colonnes
     let dateCol = typeof config?.dateColumn === 'number' ? config.dateColumn : -1;
@@ -42,30 +43,56 @@ export class CsvStatementParser implements IStatementParser {
     let amountCol = typeof config?.amountColumn === 'number' ? config.amountColumn : -1;
 
     let startIndex = 0;
+    const firstLine = rawLines[0]?.trim();
 
-    // Analyse de l'en-tête
-    if (hasHeader && rawLines.length > 0) {
-      const headerLine = rawLines[0].trim();
-      if (headerLine.length > 0) {
-        const headerCols = this.parseCsvLine(headerLine, delimiter).map((col) => col.toLowerCase().trim());
+    // Analyse de l'en-tête et détection sans perte silencieuse
+    if (firstLine && firstLine.length > 0) {
+      const headerCols = this.parseCsvLine(firstLine, delimiter).map((col) => col.toLowerCase().trim());
 
-        if (typeof config?.dateColumn === 'string') {
-          dateCol = headerCols.indexOf(config.dateColumn.toLowerCase().trim());
-        }
-        if (typeof config?.descriptionColumn === 'string') {
-          descCol = headerCols.indexOf(config.descriptionColumn.toLowerCase().trim());
-        }
-        if (typeof config?.amountColumn === 'string') {
-          amountCol = headerCols.indexOf(config.amountColumn.toLowerCase().trim());
-        }
+      if (typeof config?.dateColumn === 'string') {
+        dateCol = headerCols.indexOf(config.dateColumn.toLowerCase().trim());
+      }
+      if (typeof config?.descriptionColumn === 'string') {
+        descCol = headerCols.indexOf(config.descriptionColumn.toLowerCase().trim());
+      }
+      if (typeof config?.amountColumn === 'string') {
+        amountCol = headerCols.indexOf(config.amountColumn.toLowerCase().trim());
+      }
 
-        const detected = this.detectColumnsFromHeader(headerCols);
-        if (detected) {
-          if (dateCol === -1) dateCol = detected.dateCol;
-          if (descCol === -1) descCol = detected.descCol;
-          if (amountCol === -1) amountCol = detected.amountCol;
-        }
+      const detected = this.detectColumnsFromHeader(headerCols);
+      if (detected) {
+        if (dateCol === -1) dateCol = detected.dateCol;
+        if (descCol === -1) descCol = detected.descCol;
+        if (amountCol === -1) amountCol = detected.amountCol;
+      }
+
+      const hasRecognizedHeader =
+        detected !== null || (dateCol !== -1 && descCol !== -1 && amountCol !== -1);
+
+      if (hasHeaderConfig === false) {
+        // Pas d'en-tête explicitement déclaré
+        startIndex = 0;
+      } else if (hasRecognizedHeader) {
+        // En-tête formellement reconnu
         startIndex = 1;
+      } else {
+        // En-tête non reconnu par les mots-clés : vérifier si la ligne 1 ressemble à une transaction valide
+        const candidateCols = this.parseCsvLine(firstLine, delimiter);
+        const looksLikeData = this.looksLikeValidTransaction(candidateCols);
+
+        if (looksLikeData) {
+          // Ligne 1 analysée comme transaction : aucune perte silencieuse
+          startIndex = 0;
+        } else {
+          // Ligne 1 ni reconnue en en-tête ni en transaction valide : signalée en erreur explicite
+          errors.push({
+            lineNumber: 1,
+            rawContent: firstLine,
+            field: 'format',
+            reason: `En-tête CSV non reconnu : colonnes date, libellé ou montant introuvables`,
+          });
+          startIndex = 1;
+        }
       }
     }
 
@@ -104,7 +131,7 @@ export class CsvStatementParser implements IStatementParser {
       const rawDesc = columns[descCol]?.trim() ?? '';
       const rawAmount = columns[amountCol]?.trim() ?? '';
 
-      // 1. Validation de la date
+      // 1. Validation stricte de la date
       const normalizedDate = this.normalizeDate(rawDate, config?.dateFormat);
       if (!normalizedDate) {
         errors.push({
@@ -127,7 +154,7 @@ export class CsvStatementParser implements IStatementParser {
         continue;
       }
 
-      // 3. Validation du montant
+      // 3. Validation stricte du montant (rejet des caractères parasites, >2 décimales, etc.)
       const normalizedAmount = this.normalizeAmount(rawAmount);
       if (normalizedAmount === null || isNaN(normalizedAmount)) {
         errors.push({
@@ -237,7 +264,9 @@ export class CsvStatementParser implements IStatementParser {
   }
 
   /**
-   * Détecte les index des colonnes depuis les libellés d'en-tête
+   * Détecte les index des colonnes depuis les libellés d'en-tête.
+   * Exclut formellement 'solde', 'balance' et 'valeur' pour éviter de confondre
+   * une colonne de solde avec le montant du mouvement.
    */
   private detectColumnsFromHeader(headerCols: string[]): {
     dateCol: number;
@@ -254,7 +283,11 @@ export class CsvStatementParser implements IStatementParser {
         dateCol = i;
       } else if (/libell[eé]|desc|label|nom|motif/i.test(col) && descCol === -1) {
         descCol = i;
-      } else if (/montant|amount|valeur|solde/i.test(col) && amountCol === -1) {
+      } else if (
+        /(montant|amount)/i.test(col) &&
+        !/solde|balance|valeur/i.test(col) &&
+        amountCol === -1
+      ) {
         amountCol = i;
       }
     }
@@ -263,6 +296,22 @@ export class CsvStatementParser implements IStatementParser {
       return { dateCol, descCol, amountCol };
     }
     return null;
+  }
+
+  /**
+   * Vérifie si une ligne ressemble à une transaction valide (date valide + montant valide)
+   */
+  private looksLikeValidTransaction(cols: string[]): boolean {
+    if (cols.length < 2) return false;
+    const d0 = this.normalizeDate(cols[0]?.trim() ?? '');
+    if (d0) {
+      for (let i = 1; i < cols.length; i++) {
+        if (this.normalizeAmount(cols[i]?.trim() ?? '') !== null) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -278,7 +327,7 @@ export class CsvStatementParser implements IStatementParser {
       const year = parseInt(isoMatch[1], 10);
       const month = parseInt(isoMatch[2], 10);
       const day = parseInt(isoMatch[3], 10);
-      if (this.isValidDate(year, month, day)) {
+      if (isValidDate(year, month, day)) {
         return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       }
     }
@@ -289,7 +338,7 @@ export class CsvStatementParser implements IStatementParser {
       const day = parseInt(frMatch[1], 10);
       const month = parseInt(frMatch[2], 10);
       const year = parseInt(frMatch[3], 10);
-      if (this.isValidDate(year, month, day)) {
+      if (isValidDate(year, month, day)) {
         return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
       }
     }
@@ -297,48 +346,11 @@ export class CsvStatementParser implements IStatementParser {
     return null;
   }
 
-  private isValidDate(year: number, month: number, day: number): boolean {
-    if (year < 1970 || year > 2100) return false;
-    if (month < 1 || month > 12) return false;
-    if (day < 1 || day > 31) return false;
-    const d = new Date(year, month - 1, day);
-    return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
-  }
-
   /**
-   * Normalisation de montant vers un nombre en euros
+   * Normalisation de montant vers un nombre décimal en euros
    */
   private normalizeAmount(amountStr: string): number | null {
-    let cleaned = amountStr.trim();
-    if (!cleaned) return null;
-
-    // Supprimer les devises et espaces insécables
-    cleaned = cleaned.replace(/[\s\u00A0\u202F€$£]/g, '');
-
-    // Gestion des formats comptables avec parenthèses: (42.50) -> -42.50
-    if (cleaned.startsWith('(') && cleaned.endsWith(')')) {
-      cleaned = '-' + cleaned.slice(1, -1);
-    }
-
-    // Remplacement virgule décimale par un point
-    // Ex: -42,50 -> -42.50 ; 2100,00 -> 2100.00 ; 2.100,00 -> 2100.00
-    if (cleaned.includes(',') && cleaned.includes('.')) {
-      if (cleaned.indexOf('.') < cleaned.indexOf(',')) {
-        // Format européen 1.234,56
-        cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-      } else {
-        // Format anglo-saxon 1,234.56
-        cleaned = cleaned.replace(/,/g, '');
-      }
-    } else if (cleaned.includes(',')) {
-      cleaned = cleaned.replace(',', '.');
-    }
-
-    const parsed = parseFloat(cleaned);
-    if (isNaN(parsed)) return null;
-
-    // Arrondi précis à 2 décimales
-    return Math.round(parsed * 100) / 100;
+    return parseStrictAmount(amountStr);
   }
 
   /**

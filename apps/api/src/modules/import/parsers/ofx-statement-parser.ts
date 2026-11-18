@@ -6,10 +6,15 @@ import {
   NormalizedImportTransaction,
   ParseResult,
 } from './statement-parser.interface';
+import { isValidDate, parseStrictAmount } from './parser-utils';
 
 export class OfxStatementParser implements IStatementParser {
   readonly supportedFormat = 'OFX' as const;
 
+  /**
+   * Parse le contenu d'un fichier OFX.
+   * Note : lineNumber correspond au numéro d'index (1-based) du bloc de transaction <STMTTRN>.
+   */
   parse(content: string, _config?: CsvMappingConfig): ParseResult {
     const transactions: NormalizedImportTransaction[] = [];
     const errors: ImportRowError[] = [];
@@ -33,7 +38,7 @@ export class OfxStatementParser implements IStatementParser {
     const occurrenceTracker = new Map<string, number>();
 
     trnBlocks.forEach((block, index) => {
-      const lineNumber = index + 1;
+      const lineNumber = index + 1; // Index 1-based du bloc STMTTRN
       const cleanBlock = block.split(/<\/STMTTRN>/i)[0];
 
       // Extraction des champs DTPOSTED, TRNAMT, NAME / MEMO
@@ -46,7 +51,8 @@ export class OfxStatementParser implements IStatementParser {
       const rawAmt = amtMatch ? amtMatch[1].trim() : '';
       const rawDesc = (nameMatch ? nameMatch[1].trim() : (memoMatch ? memoMatch[1].trim() : '')).trim();
 
-      // 1. Validation de la date (Format standard OFX: YYYYMMDD ou YYYYMMDDHHMMSS)
+      // 1. Validation stricte de la date (Format standard OFX: YYYYMMDD ou YYYYMMDDHHMMSS)
+      // Empêche les dates impossibles comme le 31 février ou les années hors plage
       const normalizedDate = this.normalizeOfxDate(rawDate);
       if (!normalizedDate) {
         errors.push({
@@ -69,9 +75,9 @@ export class OfxStatementParser implements IStatementParser {
         return;
       }
 
-      // 3. Validation du montant
-      const normalizedAmount = parseFloat(rawAmt.replace(',', '.'));
-      if (isNaN(normalizedAmount)) {
+      // 3. Validation stricte du montant (aucun caractère parasite toléré, max 2 décimales)
+      const normalizedAmount = parseStrictAmount(rawAmt);
+      if (normalizedAmount === null || isNaN(normalizedAmount)) {
         errors.push({
           lineNumber,
           rawContent: cleanBlock.trim().replace(/\s+/g, ' '),
@@ -81,14 +87,12 @@ export class OfxStatementParser implements IStatementParser {
         return;
       }
 
-      const roundedAmount = Math.round(normalizedAmount * 100) / 100;
-
-      // 4. Occurrence & Empreinte
-      const rawKey = `${normalizedDate}|${roundedAmount}|${rawDesc.toUpperCase()}`;
+      // 4. Occurrence & Empreinte déterministe
+      const rawKey = `${normalizedDate}|${normalizedAmount}|${rawDesc.toUpperCase()}`;
       const occurrence = (occurrenceTracker.get(rawKey) ?? 0) + 1;
       occurrenceTracker.set(rawKey, occurrence);
 
-      const raw = `${normalizedDate}#${rawDesc}#${roundedAmount.toFixed(2)}#${occurrence}`;
+      const raw = `${normalizedDate}#${rawDesc}#${normalizedAmount.toFixed(2)}#${occurrence}`;
       const fingerprint = crypto.createHash('sha256').update(raw).digest('hex').substring(0, 16);
 
       transactions.push({
@@ -96,7 +100,7 @@ export class OfxStatementParser implements IStatementParser {
         date: normalizedDate,
         rawDescription: rawDesc,
         cleanedDescription: rawDesc,
-        amount: roundedAmount,
+        amount: normalizedAmount,
         currency,
         fingerprint,
       });
@@ -117,8 +121,12 @@ export class OfxStatementParser implements IStatementParser {
     };
   }
 
+  /**
+   * Normalise et valide strictement une date OFX.
+   * Format attendu : YYYYMMDD (ou YYYYMMDDHHMMSS...).
+   * Rejette les dates impossibles (ex: 20260231) ou années invalides (ex: 00011012).
+   */
   private normalizeOfxDate(dateStr: string): string | null {
-    // Ex: 20261012120000 -> 2026-10-12
     const match = dateStr.match(/^(\d{4})(\d{2})(\d{2})/);
     if (!match) return null;
 
@@ -126,7 +134,10 @@ export class OfxStatementParser implements IStatementParser {
     const month = parseInt(match[2], 10);
     const day = parseInt(match[3], 10);
 
-    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    if (!isValidDate(year, month, day)) {
+      return null;
+    }
+
     return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
   }
 }

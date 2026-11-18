@@ -23,6 +23,12 @@ export interface ImportCommitResult {
   totalRead: number;
   importedCount: number;
   skippedDuplicatesCount: number;
+  skippedDuplicates: Array<{
+    lineNumber: number;
+    date: string;
+    amount: number;
+    rawDescription: string;
+  }>;
   errorCount: number;
   errors: Array<{ lineNumber: number; reason: string }>;
   transactions: Array<{
@@ -38,13 +44,11 @@ export interface ImportCommitResult {
 @Injectable()
 export class ImportService {
   private readonly logger = new Logger(ImportService.name);
-  private readonly csvParser: CsvStatementParser;
-  private readonly ofxParser: OfxStatementParser;
 
-  constructor() {
-    this.csvParser = new CsvStatementParser();
-    this.ofxParser = new OfxStatementParser();
-  }
+  constructor(
+    private readonly csvParser: CsvStatementParser = new CsvStatementParser(),
+    private readonly ofxParser: OfxStatementParser = new OfxStatementParser(),
+  ) {}
 
   /**
    * Prévisualisation autonome d'un relevé bancaire (sans persistance ni session)
@@ -64,8 +68,8 @@ export class ImportService {
   }
 
   /**
-   * Enregistrement sécurisé des transactions dans le compte de l'utilisateur authentifié
-   * Si aucun accountId n'est fourni, crée automatiquement la connexion et le compte d'import.
+   * Enregistrement sécurisé des transactions dans le compte de l'utilisateur authentifié.
+   * Si aucun accountId n'est fourni, réutilise le compte d'import existant ou l'auto-crée.
    */
   async commit(
     userId: string,
@@ -151,8 +155,19 @@ export class ImportService {
       }
     }
 
+    // 2ter. Vérification de cohérence des devises (rejet strict si écart, aucune conversion implicite)
+    const mismatchedCurrency = previewResult.transactions.find(
+      (t) => t.currency && t.currency !== targetCurrency,
+    );
+    if (mismatchedCurrency) {
+      throw new BadRequestException(
+        `Écart de devise détecté : le compte cible est en ${targetCurrency} mais le relevé contient des transactions en ${mismatchedCurrency.currency}. Aucune conversion implicite n'est autorisée.`,
+      );
+    }
+
     // 3. Gestion du réimport et politique anti-doublons
     const toImport: typeof previewResult.transactions = [];
+    const skippedDuplicates: ImportCommitResult['skippedDuplicates'] = [];
     let skippedDuplicatesCount = 0;
 
     if (dto.skipDuplicates) {
@@ -175,9 +190,15 @@ export class ImportService {
         const key = `${t.date}|${t.amount}|${t.rawDescription.toUpperCase()}`;
         const countInDb = existingTracker.get(key) ?? 0;
         if (countInDb > 0) {
-          // Transaction déjà persistée en base -> on décrémente et on passe
+          // Transaction déjà persistée en base -> décrémenter et marquer comme doublon ignoré
           existingTracker.set(key, countInDb - 1);
           skippedDuplicatesCount++;
+          skippedDuplicates.push({
+            lineNumber: t.lineNumber,
+            date: t.date,
+            amount: t.amount,
+            rawDescription: t.rawDescription,
+          });
         } else {
           toImport.push(t);
         }
@@ -186,10 +207,10 @@ export class ImportService {
       toImport.push(...previewResult.transactions);
     }
 
-    // 4. Persistance atomique des transactions valides
+    // 4. Persistance des transactions valides
+    // Note : La persistance tout-ou-rien via transaction globale prisma.$transaction est planifiée pour la S6
     const createdTransactions: ImportCommitResult['transactions'] = [];
 
-    // Persistance séquentielle ou via transaction Prisma si supportée
     for (const t of toImport) {
       const created = await prisma.bankTransaction.create({
         data: {
@@ -222,6 +243,7 @@ export class ImportService {
       totalRead: previewResult.totalRows,
       importedCount: createdTransactions.length,
       skippedDuplicatesCount,
+      skippedDuplicates,
       errorCount: previewResult.errorCount,
       errors: previewResult.errors.map((e) => ({
         lineNumber: e.lineNumber,

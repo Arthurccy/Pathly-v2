@@ -166,7 +166,110 @@ async function runTests() {
     assert.strictEqual(ofxRes.transactions[0].currency, 'EUR');
   });
 
+  // 7. Revue Victor Point 1 : Rejet strict des montants mal formés (12abc, -42,505, 1.234, 12,5,3)
+  test('7. Revue Victor Point 1 : Rejet strict des montants corrompus ou ambigus sans perte silencieuse', () => {
+    const cases = [
+      { raw: '12abc', label: 'caractères alphabétiques parasites' },
+      { raw: '-42,505', label: '3 décimales non conformes' },
+      { raw: '1.234', label: 'milliers sans décimale ou 3 décimales ambiguës' },
+      { raw: '12,5,3', label: 'séparateurs multiples invalides' },
+    ];
+
+    for (const c of cases) {
+      const csv = `date;libelle;montant\n2026-10-12;TEST OPERATION;${c.raw}`;
+      const res = csvParser.parse(csv);
+      assert.strictEqual(
+        res.validCount,
+        0,
+        `Le montant "${c.raw}" (${c.label}) ne doit pas être accepté`,
+      );
+      assert.strictEqual(
+        res.errorCount,
+        1,
+        `Le montant "${c.raw}" (${c.label}) doit remonter en erreur explicite`,
+      );
+      assert.strictEqual(res.errors[0].field, 'amount');
+    }
+  });
+
+  // 8. Revue Victor Point 2 : Présence d'une colonne solde sans confusion avec le montant
+  test('8. Revue Victor Point 2 : Une colonne solde n’est jamais prise pour le montant de l’opération', () => {
+    const csv = `date;libelle;solde;montant\n2026-10-12;CB MONOPRIX;1500,00;-42,50`;
+    const res = csvParser.parse(csv);
+
+    assert.strictEqual(res.validCount, 1);
+    assert.strictEqual(res.errorCount, 0);
+    assert.strictEqual(
+      res.transactions[0].amount,
+      -42.50,
+      'Le montant doit être -42.50 € et non 1500.00 € (solde)',
+    );
+  });
+
+  // 9. Revue Victor Point 3 : Fichier sans en-tête avec transaction valide dès la ligne 1
+  test('9. Revue Victor Point 3 : Fichier sans en-tête ne perd jamais silencieusement la première transaction', () => {
+    const csv = `2026-10-12;CB MONOPRIX;-42,50\n2026-10-13;SALAIRE;2100,00`;
+    const res = csvParser.parse(csv);
+
+    assert.strictEqual(res.validCount, 2, 'Les 2 transactions doivent être préservées');
+    assert.strictEqual(res.errorCount, 0);
+    assert.strictEqual(res.transactions[0].rawDescription, 'CB MONOPRIX');
+    assert.strictEqual(res.transactions[0].amount, -42.50);
+    assert.strictEqual(res.transactions[1].rawDescription, 'SALAIRE');
+    assert.strictEqual(res.transactions[1].amount, 2100.00);
+  });
+
+  // 10. Revue Victor Point 4 : Validation stricte des dates OFX (20260231, 00011012)
+  test('10. Revue Victor Point 4 : Dates OFX impossibles rejetées en erreur explicite', () => {
+    const ofxImpossibleDate = `
+<OFX>
+<BANKTRANLIST>
+<STMTTRN>
+<TRNTYPE>DEBIT
+<DTPOSTED>20260231
+<TRNAMT>-42.50
+<NAME>DATE IMPOSSIBLE 31 FEVRIER
+</STMTTRN>
+<STMTTRN>
+<TRNTYPE>DEBIT
+<DTPOSTED>00011012
+<TRNAMT>-10.00
+<NAME>ANNEE INVALIDE
+</STMTTRN>
+</BANKTRANLIST>
+</OFX>`;
+
+    const res = ofxParser.parse(ofxImpossibleDate);
+    assert.strictEqual(res.validCount, 0);
+    assert.strictEqual(res.errorCount, 2);
+    assert.strictEqual(res.errors[0].field, 'date');
+    assert.strictEqual(res.errors[1].field, 'date');
+  });
+
+  // 11. Revue Victor Point 1 (OFX) : Montant mal formé rejeté en OFX (<TRNAMT>12abc)
+  test('11. Revue Victor Point 1 (OFX) : Montant mal formé dans <TRNAMT>12abc rejeté en erreur', () => {
+    const ofxBadAmt = `
+<OFX>
+<BANKTRANLIST>
+<STMTTRN>
+<TRNTYPE>DEBIT
+<DTPOSTED>20261012
+<TRNAMT>12abc
+<NAME>MONTANT MAL FORME
+</STMTTRN>
+</BANKTRANLIST>
+</OFX>`;
+
+    const res = ofxParser.parse(ofxBadAmt);
+    assert.strictEqual(res.validCount, 0);
+    assert.strictEqual(res.errorCount, 1);
+    assert.strictEqual(res.errors[0].field, 'amount');
+  });
+
   console.log(`\nTests terminés : ${passed} réussis, ${failed} échoués.\n`);
+  if (failed > 0) {
+    process.exit(1);
+  }
 }
 
 runTests();
