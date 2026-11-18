@@ -24,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <html lang="fr" className="dark">
+    <html lang="fr" suppressHydrationWarning>
       <body className="antialiased selection:bg-emerald-500 selection:text-black">
         {children}
       </body>
