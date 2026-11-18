@@ -1,0 +1,50 @@
+name: Monorepo CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & Typecheck (Turborepo)
+    runs-on: ubuntu-latest
+
+    env:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/pathly?schema=public"
+      DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/pathly?schema=public"
+      NEXT_PUBLIC_SUPABASE_URL: "https://mock-supabase.example.com"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "mock-anon-key-for-ci-build"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.15.4
+          run_install: false
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm --filter @pathly/database build
+
+      - name: Run Turborepo Build (all packages)
+        run: pnpm turbo run build
