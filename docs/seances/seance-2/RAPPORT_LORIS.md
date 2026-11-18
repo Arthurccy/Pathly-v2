@@ -6,7 +6,7 @@ Séance : S2 · Branche / PR : `feat/front-shadcn-responsive-layout` (locale, no
 
 - Livré et intégré : dashboard découpé en composants avec états chargement / vide / erreur pour comptes et opérations, source de démonstration identifiée, navigation clavier, mode clair/sombre.
 - Livré mais pas encore intégré : source API réelle (adaptateur et normalisation prêts, mais aucune session disponible : erreur `SESSION_REQUIRED` explicite) ; emplacements des widgets trésorerie, patrimoine, santé financière et répartition (repères vides, aucun composant de Victor, Ishak ou Jeremy raccordé).
-- Reporté : P1 (mutation optimiste avec Clément, composant de Jeremy, saisie de bien physique, sélecteur de personas) et P2. Captures d'écran mobile/desktop non encore ajoutées (voir §5).
+- Reporté : P1 (mutation optimiste avec Clément, composant de Jeremy, saisie de bien physique, sélecteur de personas) et P2. Captures d'écran mobile et desktop ajoutées (voir §5).
 
 ## 2. Fonctionnement à connaître
 
@@ -38,11 +38,12 @@ Séance : S2 · Branche / PR : `feat/front-shadcn-responsive-layout` (locale, no
 - Limite : transactions API limitées à 50, sans pagination ; totaux informatifs hors calcul de trésorerie ; logos remplacés par des initiales.
 - Attendu des collègues : Yann — fournir `getAccessToken` (`apps/web/src/lib/dashboard/session.ts`) ; Victor, Ishak, Jeremy — monter leurs composants via la prop `widgets` ; Ishak — aligner le contrat API (Decimal, IBAN) ; Clément — recette du parcours.
 - Reproduction : `pnpm install --frozen-lockfile`, `pnpm --filter @pathly/web dev`, ouvrir `http://localhost:3000`, changer la source dans l'en-tête.
-- À faire avant démonstration : captures mobile et desktop (non versionnées à ce jour).
+- À faire avant démonstration : rien de bloquant côté captures.
+- Captures (données fictives, sans donnée personnelle) : [desktop nominal clair](./assets/loris-desktop-nominal-clair.png), [desktop erreur simulée sombre](./assets/loris-desktop-erreur-sombre.png), [mobile nominal clair](./assets/loris-mobile-nominal-clair.png), [mobile aucune donnée sombre](./assets/loris-mobile-vide-sombre.png). Ce sont des captures de la fenêtre visible, pas de la page entière : la capture d'erreur montre les emplacements et le début de « Mes comptes », pas les messages d'erreur.
 - État Git : branche locale uniquement, non publiée ; PR non ouverte.
 
 ## Relecture par l'auteur
 
-- [ ] J'ai lu le diff et ce rapport ; ils décrivent le même résultat.
-- [ ] J'ai vérifié les résultats indiqués et signalé ce qui ne l'est pas.
-- [ ] Je peux retrouver le point d'entrée, expliquer l'exemple et montrer un cas d'erreur.
+- [X] J'ai lu le diff et ce rapport ; ils décrivent le même résultat.
+- [X] J'ai vérifié les résultats indiqués et signalé ce qui ne l'est pas.
+- [X] Je peux retrouver le point d'entrée, expliquer l'exemple et montrer un cas d'erreur.
