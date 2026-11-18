@@ -12,6 +12,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "db:generate": "pnpm --filter @pathly/database db:generate",
     "db:push": "pnpm --filter @pathly/database db:push",
+    "db:migrate:deploy": "pnpm --filter @pathly/database db:migrate:deploy",
+    "db:seed": "pnpm --filter @pathly/database db:seed",
     "db:studio": "pnpm --filter @pathly/database db:studio"
   },
   "devDependencies": {

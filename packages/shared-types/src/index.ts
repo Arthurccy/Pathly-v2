@@ -222,4 +222,7 @@ export interface SubscriptionOptimizationDto {
   actionUrl?: string;
 }
 
+// --- CONTRATS PAR DOMAINE (S2) ---
 export * from './cashflow';
+export * from './import';
+export * from './me';
