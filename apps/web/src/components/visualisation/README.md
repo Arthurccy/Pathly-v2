@@ -4,7 +4,7 @@ Ticket : `S02-JEREMY-visualisation` · Responsable : Jeremy · Intégration dash
 
 Composants autonomes : aucun appel réseau ni Supabase. L'intégrateur fournit un état typé `VisualState<T>`.
 Page de développement isolée : `/dev/visualisation` (non indexée), avec tous les états, un changement de données en direct,
-le thème sombre et le mode sans mouvement. Emplacement `components/visualisation/` **à confirmer avec Loris**.
+le thème sombre et le mode sans mouvement. Emplacement `components/visualisation/` confirmé par Loris.
 
 ## Props communes
 
