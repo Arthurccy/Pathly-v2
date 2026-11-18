@@ -1,6 +1,6 @@
 import React from 'react';
-import { DashboardView } from '@/components/dashboard/DashboardView';
+import { DashboardWithVisualisations } from '@/components/visualisation/DashboardWithVisualisations';
 
 export default function DashboardPage(): React.JSX.Element {
-  return <DashboardView />;
+  return <DashboardWithVisualisations />;
 }

@@ -2,6 +2,7 @@
   "extends": "@pathly/tsconfig/nextjs.json",
   "compilerOptions": {
     "baseUrl": ".",
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": ["./src/*"]
     }
