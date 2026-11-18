@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { useDashboardData } from '@/lib/dashboard/use-dashboard-data';
+import { usePhysicalAssets } from '@/lib/dashboard/use-physical-assets';
 import type { DataSourceChoice } from '@/lib/dashboard/types';
 import { formatMonth } from '@/lib/dashboard/format';
 import { ALL_MONTHS, filterTransactions, listMonths, summarizeTransactions } from '@/lib/dashboard/transactions-view';
@@ -11,6 +12,7 @@ import { DashboardHeader } from './DashboardHeader';
 import { DataModeBanner } from './DataModeBanner';
 import { MonthSelector } from './MonthSelector';
 import { MonthSummary } from './MonthSummary';
+import { PhysicalAssetsSection } from './PhysicalAssetsSection';
 import { TransactionsSection } from './TransactionsSection';
 import { WidgetSlot } from './WidgetSlot';
 import { WIDGET_SLOTS, type DashboardWidgetContext, type DashboardWidgets } from './widget-slots';
@@ -25,6 +27,7 @@ export function DashboardView({ widgets = {}, initialSource = 'demo:nominal' }: 
   const [source, setSource] = useState<DataSourceChoice>(initialSource);
   const [requestedMonth, setRequestedMonth] = useState<string | null>(null);
   const { accounts, transactions, reload } = useDashboardData(source);
+  const physicalAssets = usePhysicalAssets(source);
 
   const transactionList = transactions.status === 'ready' ? transactions.data : [];
   const accountList = accounts.status === 'ready' ? accounts.data : [];
@@ -85,6 +88,14 @@ export function DashboardView({ widgets = {}, initialSource = 'demo:nominal' }: 
         </div>
 
         <AccountsSection state={accounts} onRetry={reload} />
+
+        <PhysicalAssetsSection
+          key={source}
+          state={physicalAssets.assets}
+          isDemo={source !== 'api'}
+          onCreate={physicalAssets.create}
+          onRetry={physicalAssets.reload}
+        />
 
         <TransactionsSection
           state={transactions}
