@@ -1,11 +1,11 @@
 # Rapport de séance — Jeremy CHAN-FUNG-TING
 
-Séance : S2 · Branche / PR : `feat/front-r3f-canvas-motion` / #4 et `feat/s02-jeremy-montage-dashboard` / #9 (fusionnées), `feat/s02-jeremy-rendu-3d` (P1, brouillon) · Ticket : `S02-JEREMY-visualisation` · Relecteur : Loris Neve
+Séance : S2 · Branche / PR : `feat/front-r3f-canvas-motion` / #4, `feat/s02-jeremy-montage-dashboard` / #9 et `feat/s02-jeremy-rendu-3d` / #10 (fusionnées) · Ticket : `S02-JEREMY-visualisation` · Relecteur : Loris Neve
 
 ## 1. Résultat et périmètre
 
 - Livré et intégré : aucun élément au statut « intégré » (données réelles non raccordées).
-- Livré mais pas encore intégré : P0 « validé isolément », fusionné sur `main` (PR #4 et #9) — `FinancialHealth` et `NetWorthBreakdown`, états chargement, vide et erreur, version sans mouvement, adaptateur `ApiResponse`, page `/dev/visualisation`, montage dans les emplacements `financial-health` et `wealth-breakdown` du dashboard sur fixtures identifiées. P1 « validé isolément » (PR en brouillon) — vue 3D `NetWorth3D` chargée au clic, état de chargement, repli sans WebGL.
+- Livré mais pas encore intégré : P0 « validé isolément », fusionné sur `main` (PR #4 et #9) — `FinancialHealth` et `NetWorthBreakdown`, états chargement, vide et erreur, version sans mouvement, adaptateur `ApiResponse`, page `/dev/visualisation`, montage dans les emplacements `financial-health` et `wealth-breakdown` du dashboard sur fixtures identifiées. P1 « validé isolément », fusionné sur `main` (PR #10) — vue 3D `NetWorth3D` chargée au clic, état de chargement, repli sans WebGL.
 - Reporté ou bloqué (P0/P1/P2, raison et prochaine action) : données réelles des deux widgets — le contexte des emplacements ne transmet ni `GET /cashflow/summary` (Victor) ni `NetWorthSummaryDto` (Ishak) ; à raccorder via `apiResponseToVisualState`. P1 : mesure du coût avec Clément sur sa configuration ; vue 3D non montée dans le dashboard. P2 visite guidée — non commencée.
 
 ## 2. Fonctionnement à connaître
@@ -13,7 +13,7 @@ Séance : S2 · Branche / PR : `feat/front-r3f-canvas-motion` / #4 et `feat/s02-
 - Point d’entrée et fichiers principaux : `apps/web/src/components/visualisation/` — `index.ts`, `FinancialHealth.tsx`, `NetWorthBreakdown.tsx`, `compute.ts`, `adapter.ts`, `contracts.ts`, `fixtures.ts`, `README.md` (props). Emplacement confirmé par Loris.
 - Chemin des données en deux ou trois phrases : l’intégrateur passe un `VisualState<T>`, directement ou via `apiResponseToVisualState(réponse)`. `compute.ts` convertit les euros en centimes entiers, calcule positions et parts et liste les incohérences ; les composants n’affichent que ce résultat, sans appel réseau ni Supabase.
 - Décision importante et raison : dettes dans une barre séparée sur la même échelle que les actifs, pour ne jamais en faire une part des actifs ; textures et valeurs écrites, pour ne pas porter l’information par la seule couleur ; libellé d’état repris du statut reçu, sans seuil « tendu » inventé.
-- Contrat consommé/exposé, version ou référence et fixture utilisée : `NetWorthSummaryDto` (existant, non modifié) ; `CashflowSummaryDto` de la PR #2 de Victor (brouillon, `CONTRAT_CASHFLOW_S2.md`), types de statut et de raison recopiés localement jusqu’à sa fusion ; `ApiResponse<T>` existant. Bloc optionnel `inputs` proposé, à valider avec Victor et Ishak. Fixtures : `fixtures.ts`, au format exact du contrat et, séparément, au format de la proposition.
+- Contrat consommé/exposé, version ou référence et fixture utilisée : `NetWorthSummaryDto` (existant, non modifié) ; `CashflowSummaryDto` de la PR #2 de Victor (ouverte, non fusionnée, `CONTRAT_CASHFLOW_S2.md`), types de statut et de raison recopiés localement jusqu’à sa fusion ; `ApiResponse<T>` existant. Bloc optionnel `inputs` proposé, à valider avec Victor et Ishak. Fixtures : `fixtures.ts`, au format exact du contrat et, séparément, au format de la proposition.
 - Validation isolée avec doublure ou intégration réelle ; raccordement restant : validation isolée sur fixtures, montée dans le dashboard via `DashboardWithVisualisations.tsx` (composant client, `page.tsx` ne pouvant pas transmettre de fonctions à `DashboardView`). En démo avec comptes chargés : fixtures « Données fictives » ; démo vide, en erreur ou API : état « aucune donnée ». Restent les données réelles : `GET /cashflow/summary` (Victor) et synthèse patrimoniale (Ishak).
 
 ## 3. Exemple concret vérifié
