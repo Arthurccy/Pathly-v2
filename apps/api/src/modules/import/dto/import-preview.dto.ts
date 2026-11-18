@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsEnum,
   IsBoolean,
+  IsNumber,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -124,6 +125,14 @@ export class ImportCommitRequestDto extends ImportPreviewRequestDto {
   @IsOptional()
   @IsString()
   accountName?: string;
+
+  @ApiPropertyOptional({
+    description: 'Solde actuel ou initial du compte renseigné par l’utilisateur (évite un faux solde à 0)',
+    example: 1500.0,
+  })
+  @IsOptional()
+  @IsNumber()
+  initialBalance?: number;
 
   @ApiPropertyOptional({
     description: 'Si true, ignore silencieusement les transactions détectées comme réimportées',

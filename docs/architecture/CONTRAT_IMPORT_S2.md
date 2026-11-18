@@ -12,10 +12,16 @@
 - **Validation de la proposition** : **OK à 100 %**.
 - L'ajout de `source ConnectionSource @default(POWENS)` avec `POWENS | MANUAL | FILE_IMPORT` sur `BankConnection` est parfait.
 - **Qui crée le compte et la connexion ?**
-  - **Auto au premier commit** : dans `POST /api/v1/import/commit`, `accountId` est désormais **optionnel** :
+  - **Auto au premier commit & réutilisation intelligente** : dans `POST /api/v1/import/commit`, `accountId` est optionnel :
     - Si `accountId` est fourni : on vérifie que le compte appartient bien à l'utilisateur connecté (rejet 403 sinon).
-    - Si `accountId` est omis : le service auto-crée automatiquement la `BankConnection` (source `FILE_IMPORT`, institution `"Relevé importé"`) et un `BankAccount` (type `CHECKING`, solde initial 0, nom configurable via `accountName` ou `"Compte relevé importé"` par défaut).
-  - Cela débloque immédiatement Loris côté frontend (pas besoin d'un formulaire préalable de création de compte).
+    - Si `accountId` est omis :
+      1. Le service cherche si une connexion d'import (`FILE_IMPORT`) et un compte associé existent déjà pour cet utilisateur.
+      2. **S'il existe déjà un compte d'import** : il le réutilise directement (évite la création de comptes doublons et active immédiatement la détection anti-doublon des transactions !).
+      3. **S'il n'en existe pas encore** : il crée automatiquement la `BankConnection` et le `BankAccount` (type `CHECKING`).
+    - L'`accountId` utilisé est toujours renvoyé dans la réponse `ImportCommitResult.accountId` pour que le frontend puisse le mémoriser.
+- **Gestion du solde (`currentBalance`)** :
+  - D'accord à 100 % pour rendre `currentBalance` nullable (`Decimal?`) en base.
+  - Ajout du champ optionnel `initialBalance?: number` dans `ImportCommitRequestDto` permettant à l'utilisateur de renseigner son vrai solde au moment de l'import. S'il n'est pas saisi, le solde restera `null` (solde inconnu) pour ne pas fausser le Safe-to-Spend de Victor avec un faux 0.
 
 ---
 

@@ -154,6 +154,50 @@ async function runCommitTests() {
     }
   });
 
+  // 5. Réutilisation du compte existant lors d'un second import sans accountId
+  await test('5. Réutilisation du compte d’import existant sans accountId pour éviter les comptes doublons', async () => {
+    const originalConnFindFirst = prisma.bankConnection.findFirst;
+    const originalTxFindMany = prisma.bankTransaction.findMany;
+    const originalTxCreate = prisma.bankTransaction.create;
+
+    // La connexion existe déjà avec un compte existant
+    (prisma.bankConnection as any).findFirst = async () => ({
+      id: 'conn-auto-1',
+      accounts: [
+        {
+          id: 'acc-existant-1',
+          name: 'Compte relevé importé',
+          currency: 'EUR',
+        },
+      ],
+    });
+
+    (prisma.bankTransaction as any).findMany = async () => [
+      {
+        date: new Date('2026-10-12'),
+        amount: -42.50,
+        rawDescription: 'CB MONOPRIX PARIS',
+      },
+    ];
+
+    try {
+      const result = await importService.commit('user-remi', {
+        rawContent: 'date;libelle;montant\n2026-10-12;CB MONOPRIX PARIS;-42,50',
+        format: StatementFormat.CSV,
+        skipDuplicates: true,
+      });
+
+      // Le compte réutilisé est acc-existant-1, et la transaction est détectée comme doublon !
+      assert.strictEqual(result.accountId, 'acc-existant-1');
+      assert.strictEqual(result.skippedDuplicatesCount, 1);
+      assert.strictEqual(result.importedCount, 0);
+    } finally {
+      prisma.bankConnection.findFirst = originalConnFindFirst;
+      prisma.bankTransaction.findMany = originalTxFindMany;
+      prisma.bankTransaction.create = originalTxCreate;
+    }
+  });
+
   console.log(`\nTests commit terminés : ${passed} réussis, ${failed} échoués.\n`);
   if (failed > 0) {
     process.exit(1);

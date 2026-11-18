@@ -103,11 +103,14 @@ export class ImportService {
       }
       targetCurrency = account.currency || targetCurrency;
     } else {
-      // Auto-création d'une connexion d'import et du compte associé
+      // 2bis. Résolution ou auto-création de la connexion et du compte d'import
       let connection = await prisma.bankConnection.findFirst({
         where: {
           userId,
           institutionName: 'Relevé importé',
+        },
+        include: {
+          accounts: true,
         },
       });
 
@@ -118,19 +121,34 @@ export class ImportService {
             institutionName: 'Relevé importé',
             status: 'CONNECTED',
           },
+          include: {
+            accounts: true,
+          },
         });
       }
 
-      const newAccount = await prisma.bankAccount.create({
-        data: {
-          connectionId: connection.id,
-          name: dto.accountName || 'Compte relevé importé',
-          type: 'CHECKING',
-          currentBalance: 0,
-          currency: targetCurrency,
-        },
-      });
-      targetAccountId = newAccount.id;
+      // Réutilisation du compte d'import existant pour éviter les doublons de comptes lors des réimports
+      const targetName = dto.accountName || 'Compte relevé importé';
+      const existingAccount =
+        connection.accounts?.find((acc) => acc.name === targetName) ||
+        connection.accounts?.[0];
+
+      if (existingAccount) {
+        targetAccountId = existingAccount.id;
+        targetCurrency = existingAccount.currency || targetCurrency;
+      } else {
+        const initialBalance = dto.initialBalance !== undefined ? dto.initialBalance : 0;
+        const newAccount = await prisma.bankAccount.create({
+          data: {
+            connectionId: connection.id,
+            name: targetName,
+            type: 'CHECKING',
+            currentBalance: initialBalance,
+            currency: targetCurrency,
+          },
+        });
+        targetAccountId = newAccount.id;
+      }
     }
 
     // 3. Gestion du réimport et politique anti-doublons
