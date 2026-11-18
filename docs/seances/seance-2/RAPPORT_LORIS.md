@@ -39,7 +39,7 @@ Séance : S2 · Branche / PR : `feat/front-shadcn-responsive-layout` (locale, no
 - Attendu des collègues : Yann — fournir `getAccessToken` (`apps/web/src/lib/dashboard/session.ts`) ; Victor, Ishak, Jeremy — monter leurs composants via la prop `widgets` ; Ishak — aligner le contrat API (Decimal, IBAN) ; Clément — recette du parcours.
 - Reproduction : `pnpm install --frozen-lockfile`, `pnpm --filter @pathly/web dev`, ouvrir `http://localhost:3000`, changer la source dans l'en-tête.
 - À faire avant démonstration : rien de bloquant côté captures.
-- Captures (données fictives, sans donnée personnelle) : [desktop nominal clair](./assets/loris-desktop-nominal-clair.png), [desktop erreur simulée sombre](./assets/loris-desktop-erreur-sombre.png), [mobile nominal clair](./assets/loris-mobile-nominal-clair.png), [mobile aucune donnée sombre](./assets/loris-mobile-vide-sombre.png). Ce sont des captures de la fenêtre visible, pas de la page entière : la capture d'erreur montre les emplacements et le début de « Mes comptes », pas les messages d'erreur.
+- Captures pleine page (données fictives, sans donnée personnelle) : [desktop nominal clair](./assets/loris-desktop-nominal-clair.png), [desktop erreur simulée sombre](./assets/loris-desktop-erreur-sombre.png), [mobile nominal clair](./assets/loris-mobile-nominal-clair.png), [mobile erreur simulée sombre](./assets/loris-mobile-erreur-sombre.png), [mobile aucune donnée clair](./assets/loris-mobile-vide-clair.png). La bulle « N » visible sur certaines captures est l'indicateur du serveur de développement Next.js.
 - État Git : branche locale uniquement, non publiée ; PR non ouverte.
 
 ## Relecture par l'auteur
