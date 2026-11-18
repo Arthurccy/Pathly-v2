@@ -7,6 +7,7 @@ import { ThemeToggle } from './ThemeToggle';
 const NAV_LINKS = [
   { href: '#widgets', label: 'Synthèse' },
   { href: '#comptes', label: 'Comptes' },
+  { href: '#biens', label: 'Biens' },
   { href: '#operations', label: 'Opérations' },
 ];
 

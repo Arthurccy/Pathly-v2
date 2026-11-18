@@ -10,3 +10,7 @@ export const BUTTON_SECONDARY = `inline-flex items-center gap-1.5 rounded-xl bor
 
 export const FIELD =
   'rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900 placeholder-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder-slate-400';
+
+export const FIELD_INVALID = 'border-rose-500 dark:border-rose-400';
+
+export const BUTTON_PRIMARY = `inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3.5 py-2 text-xs font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS_RING}`;
