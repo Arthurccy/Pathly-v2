@@ -1,8 +1,9 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { configureHttp } from './app.setup';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -20,18 +21,8 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   });
 
-  // Validation stricte des DTOs
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-
-  // Préfixe global des routes
-  const globalPrefix = process.env.API_PREFIX || 'api/v1';
-  app.setGlobalPrefix(globalPrefix);
+  // Validation stricte des DTOs et préfixe global des routes (partagés avec les tests)
+  const globalPrefix = configureHttp(app);
 
   // Documentation Swagger OpenAPI pour l'équipe (Séance 2 & 3)
   const config = new DocumentBuilder()
