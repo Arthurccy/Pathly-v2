@@ -11,6 +11,7 @@ import type {
 } from '../contracts';
 import { FinancialHealth } from '../FinancialHealth';
 import { NetWorthBreakdown } from '../NetWorthBreakdown';
+import { NetWorth3D } from '../NetWorth3D';
 import * as fx from '../fixtures';
 
 interface Case<T> {
@@ -111,6 +112,7 @@ export function VisualisationGallery(): React.JSX.Element {
   const [liveHealth, setLiveHealth] = useState(0);
   const [liveNetWorth, setLiveNetWorth] = useState(0);
   const [frame, setFrame] = useState<VisualFrame>('card');
+  const [noWebGL, setNoWebGL] = useState(false);
   const dark = tone === 'dark';
   const common = { tone, frame, motion, sourceLabel: fx.FIXTURE_LABEL };
 
@@ -203,6 +205,36 @@ export function VisualisationGallery(): React.JSX.Element {
             Répartition du patrimoine — NetWorthSummaryDto
           </h2>
           <Grid cases={NET_WORTH_CASES} render={(s) => <NetWorthBreakdown state={s} {...common} />} />
+        </section>
+
+        <section aria-labelledby="g-3d">
+          <h2 id="g-3d" className="mb-1 text-lg font-bold">
+            Vue 3D chargée à la demande (P1)
+          </h2>
+          <p className="mb-3 text-sm opacity-80">
+            La bibliothèque 3D n’est téléchargée qu’au clic. Sans WebGL, un message remplace la vue 3D et la vue 2D reste
+            la référence.
+          </p>
+          <button
+            type="button"
+            onClick={() => setNoWebGL(!noWebGL)}
+            aria-pressed={noWebGL}
+            className={`${BUTTON} mb-3`}
+          >
+            Simuler l’absence de WebGL
+          </button>
+          <div className="grid gap-4 md:grid-cols-2">
+            <NetWorthBreakdown state={fx.netWorthHealthy} {...common} />
+            <div data-testid="three-demo">
+              <NetWorth3D
+                key={noWebGL ? 'no-webgl' : 'webgl'}
+                state={fx.netWorthHealthy}
+                tone={tone}
+                motion={motion}
+                detectWebGL={noWebGL ? () => false : undefined}
+              />
+            </div>
+          </div>
         </section>
       </div>
     </main>
