@@ -65,7 +65,7 @@ export function NetWorth3D({
       )}
       {phase === 'shown' && (
         <figure>
-          <div className={`h-64 w-full rounded-xl ${t.track}`}>
+          <div className={`h-80 w-full rounded-xl ${t.track}`}>
             <NetWorthScene bars={bars} rotate={!isStatic} />
           </div>
           <figcaption className={`mt-2 text-xs ${t.muted}`}>
