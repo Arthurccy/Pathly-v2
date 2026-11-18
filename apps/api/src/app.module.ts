@@ -1,17 +1,18 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
-import { PowensModule } from './modules/powens/powens.module';
-import { AccountsModule } from './modules/accounts/accounts.module';
-import { TransactionsModule } from './modules/transactions/transactions.module';
-import { SyncModule } from './modules/sync/sync.module';
-import { ImportModule } from './modules/import/import.module';
-import { CashflowModule } from './modules/cashflow/cashflow.module';
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { PowensModule } from "./modules/powens/powens.module";
+import { AccountsModule } from "./modules/accounts/accounts.module";
+import { TransactionsModule } from "./modules/transactions/transactions.module";
+import { SyncModule } from "./modules/sync/sync.module";
+import { ImportModule } from "./modules/import/import.module";
+import { CashflowModule } from "./modules/cashflow/cashflow.module";
+import { UsersModule } from "./modules/users/users.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env', '../../.env'],
+      envFilePath: [".env.local", ".env", "../../.env"],
     }),
     SyncModule,
     PowensModule,
@@ -19,6 +20,7 @@ import { CashflowModule } from './modules/cashflow/cashflow.module';
     TransactionsModule,
     CashflowModule,
     ImportModule,
+    UsersModule,
   ],
 })
 export class AppModule {}
