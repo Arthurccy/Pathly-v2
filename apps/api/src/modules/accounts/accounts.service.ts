@@ -1,40 +1,24 @@
-import { Injectable } from '@nestjs/common';
-import { prisma } from '@pathly/database';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import type { BankAccountDto } from '@pathly/shared-types';
+import { AccountsRepository } from './accounts.repository';
 
 @Injectable()
 export class AccountsService {
-  async getAccountsByUser(userId: string) {
-    return prisma.bankAccount.findMany({
-      where: {
-        connection: {
-          userId,
-        },
-      },
-      include: {
-        connection: {
-          select: {
-            institutionName: true,
-            status: true,
-          },
-        },
-      },
-      orderBy: {
-        currentBalance: 'desc',
-      },
-    });
+  constructor(private readonly accounts: AccountsRepository) {}
+
+  getAccountsByUser(userId: string): Promise<BankAccountDto[]> {
+    return this.accounts.findByUser(userId);
   }
 
-  async getAccountById(userId: string, accountId: string) {
-    return prisma.bankAccount.findFirst({
-      where: {
-        id: accountId,
-        connection: {
-          userId,
-        },
-      },
-      include: {
-        connection: true,
-      },
-    });
+  /**
+   * 404 aussi bien pour un compte inexistant que pour le compte d'un autre utilisateur :
+   * on ne révèle pas l'existence d'une ressource tierce.
+   */
+  async getAccountById(userId: string, accountId: string): Promise<BankAccountDto> {
+    const account = await this.accounts.findByIdForUser(userId, accountId);
+    if (!account) {
+      throw new NotFoundException('Compte introuvable');
+    }
+    return account;
   }
 }

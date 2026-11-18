@@ -5,6 +5,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { SyncModule } from './modules/sync/sync.module';
 import { ImportModule } from './modules/import/import.module';
+import { CashflowModule } from './modules/cashflow/cashflow.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ImportModule } from './modules/import/import.module';
     PowensModule,
     AccountsModule,
     TransactionsModule,
+    CashflowModule,
     ImportModule,
   ],
 })

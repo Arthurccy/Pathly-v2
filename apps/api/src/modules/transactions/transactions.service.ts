@@ -1,31 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { prisma } from '@pathly/database';
+import type { BankTransactionDto } from '@pathly/shared-types';
+import { TRANSACTIONS_DEFAULT_LIMIT } from './list-transactions.query';
+import { TransactionsRepository } from './transactions.repository';
 
 @Injectable()
 export class TransactionsService {
-  async getTransactionsByUser(userId: string, limit = 50, cursor?: string) {
-    return prisma.bankTransaction.findMany({
-      where: {
-        account: {
-          connection: {
-            userId,
-          },
-        },
-      },
-      take: limit,
-      skip: cursor ? 1 : 0,
-      cursor: cursor ? { id: cursor } : undefined,
-      orderBy: {
-        date: 'desc',
-      },
-      include: {
-        account: {
-          select: {
-            name: true,
-            currency: true,
-          },
-        },
-      },
-    });
+  constructor(private readonly transactions: TransactionsRepository) {}
+
+  getTransactionsByUser(
+    userId: string,
+    limit = TRANSACTIONS_DEFAULT_LIMIT,
+    cursor?: string,
+  ): Promise<BankTransactionDto[]> {
+    return this.transactions.findByUser(userId, { limit, cursor });
   }
 }

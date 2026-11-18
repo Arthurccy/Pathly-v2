@@ -295,6 +295,21 @@ async function runTests() {
     assert.strictEqual(res.transactions[1].amount, 2100.00);
   });
 
+  // 14. Configuration hasHeader: true + mapping complet + en-tête non standard
+  test('14. hasHeader: true avec mapping complet et en-tête non standard saute bien la ligne 1', () => {
+    const csvData = `Date opé;Texte;Somme\n2026-10-12;CB MONOPRIX;-42,50\n2026-10-13;SALAIRE;2100,00`;
+    const res = csvParser.parse(csvData, {
+      hasHeader: true,
+      dateColumn: 0,
+      descriptionColumn: 1,
+      amountColumn: 2,
+    });
+
+    assert.strictEqual(res.validCount, 2);
+    assert.strictEqual(res.errorCount, 0);
+    assert.strictEqual(res.transactions[0].rawDescription, 'CB MONOPRIX');
+  });
+
   console.log(`\nTests terminés : ${passed} réussis, ${failed} échoués.\n`);
   if (failed > 0) {
     process.exit(1);

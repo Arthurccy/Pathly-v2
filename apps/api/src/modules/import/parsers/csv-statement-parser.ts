@@ -90,11 +90,17 @@ export class CsvStatementParser implements IStatementParser {
       const testAmountCol = amountCol !== -1 ? amountCol : 2;
       const looksLikeData = this.looksLikeValidTransaction(candidateCols, testDateCol, testAmountCol);
 
+      const hasCompleteMapping = dateCol !== -1 && descCol !== -1 && amountCol !== -1;
+
       if (hasHeaderConfig === false) {
         // Pas d'en-tête explicitement déclaré
         startIndex = 0;
       } else if (hasRecognizedHeaderText) {
         // En-tête textuel formellement reconnu
+        startIndex = 1;
+      } else if (hasHeaderConfig === true && hasCompleteMapping && !looksLikeData) {
+        // Configuration explicite : hasHeader: true + mapping complet + ligne 1 non-données
+        // Permet les en-têtes non standards (ex: 'Date opé;Texte;Somme') sans exiger de mots-clés français
         startIndex = 1;
       } else if (looksLikeData) {
         // Pas d'en-tête reconnu, mais la ligne 1 est une transaction valide :

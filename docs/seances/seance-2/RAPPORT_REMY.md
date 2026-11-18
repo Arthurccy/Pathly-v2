@@ -69,7 +69,8 @@ Séance : 2 · Branche / PR : `feat/back-bank-statement-parser` · Ticket : S02-
 
 | Commande ou scénario | Résultat observé | Limite / preuve utile |
 | -------------------- | ---------------- | --------------------- |
-| `pnpm --filter @pathly/api test:import` | 22/22 tests réussis (13 parser/preview, 9 commit/sécurité) | Script ts-node avec exit code strict `process.exit(1)` |
+| `pnpm --filter @pathly/api test:import` | 23/23 tests réussis (14 parser/preview, 9 commit/sécurité) | Script ts-node avec exit code strict `process.exit(1)` |
+| `pnpm --filter @pathly/api test` | 53/53 tests Jest réussis (suite commune après fusion avec main) | Tests Jest intégrés |
 | `pnpm --filter @pathly/api exec tsc --noEmit --incremental false` | Réussi (0 erreur TypeScript) | Compilation stricte validée |
 | `pnpm --filter @pathly/api build` | Réussi (build NestJS opérationnel) | `dist/` généré avec succès |
 | `pnpm --filter @pathly/database db:generate` | Réussi (Client Prisma v6.19.3 généré) | Modèle BDD aligné |
