@@ -71,3 +71,14 @@ Un composant client est nécessaire : `page.tsx`, composant serveur, ne peut pas
 - Démo vide, en erreur, chargement ou source API : état « aucune donnée », jamais de montant inventé.
 - Raccordement réel ensuite : `state={apiResponseToVisualState(réponse)}` à partir de `GET /cashflow/summary` (Victor) et de
   la synthèse patrimoniale (Ishak), avec `state={{ status: 'loading' }}` pendant la requête.
+
+## Vue 3D `NetWorth3D` (P1)
+
+`state: VisualState<NetWorthSummaryDto>`, `tone`, `motion`, `detectWebGL?` (détection injectable, par défaut canvas du navigateur).
+
+- Bouton « Afficher la vue 3D » : la scène (`three/NetWorthScene.tsx`, `three` + `@react-three/fiber`) n'est téléchargée qu'au clic,
+  par import dynamique sans rendu serveur, avec un état « Chargement de la vue 3D… ».
+- Sans WebGL : message explicite, aucun canvas ; la vue 2D `NetWorthBreakdown` reste la version de référence.
+- Colonne d'actifs empilés et colonne de dettes séparée, mêmes proportions que la vue 2D (`three/scene-model.ts`).
+  Décorative (`aria-hidden`) : les valeurs restent écrites dans la vue 2D. Rotation désactivée en mode sans mouvement.
+- Coût mesuré (build de production) : chargement de la page inchangé, +244 kB de JS compressé au clic.
