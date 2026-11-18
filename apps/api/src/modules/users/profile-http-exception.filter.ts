@@ -3,15 +3,27 @@ import {
   Catch,
   ExceptionFilter,
   HttpException,
+  Logger,
 } from '@nestjs/common';
 import type { Response } from 'express';
 
-@Catch(HttpException)
-export class ProfileHttpExceptionFilter implements ExceptionFilter<HttpException> {
-  catch(exception: HttpException, host: ArgumentsHost): void {
+@Catch()
+export class ProfileHttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(ProfileHttpExceptionFilter.name);
+
+  catch(exception: unknown, host: ArgumentsHost): void {
+    const response = host.switchToHttp().getResponse<Response>();
+    if (!(exception instanceof HttpException)) {
+      this.logger.error('Erreur serveur non prévue sur le profil utilisateur.');
+      response.status(500).json({
+        success: false,
+        error: { code: 'HTTP_500', message: 'Une erreur serveur est survenue.' },
+      });
+      return;
+    }
+
     const status = exception.getStatus();
     const body = exception.getResponse();
-    const response = host.switchToHttp().getResponse<Response>();
     if (typeof body === 'object' && 'success' in body && body.success === false && 'error' in body) {
       response.status(status).json(body);
       return;

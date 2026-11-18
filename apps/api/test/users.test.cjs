@@ -142,6 +142,37 @@ test('GET /accounts sans session est refusé avant toute lecture de comptes', as
   }
 });
 
+test('une panne de stockage est signalée sans exposer de détails dans la réponse', async () => {
+  const module = await Test.createTestingModule({
+    controllers: [UsersController],
+    providers: [
+      UsersService,
+      { provide: PROFILE_REPOSITORY, useValue: { findUnique: async () => { throw new Error('détail confidentiel'); } } },
+    ],
+  })
+    .overrideGuard(SupabaseAuthGuard)
+    .useValue({
+      canActivate(context) {
+        context.switchToHttp().getRequest().user = { id: 'user-a', email: 'a@example.test' };
+        return true;
+      },
+    })
+    .compile();
+  const app = module.createNestApplication();
+  await app.listen(0, '127.0.0.1');
+  try {
+    const address = app.getHttpServer().address();
+    const response = await fetch(`http://127.0.0.1:${address.port}/me`);
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), {
+      success: false,
+      error: { code: 'HTTP_500', message: 'Une erreur serveur est survenue.' },
+    });
+  } finally {
+    await app.close();
+  }
+});
+
 test('PATCH /me valide la saisie et ne modifie que le profil authentifié', async () => {
   const repository = createRepository();
   const service = new UsersService(repository);
