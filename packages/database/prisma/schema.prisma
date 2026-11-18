@@ -16,6 +16,15 @@ enum ConnectionStatus {
   EXPIRED
 }
 
+// Origine des données d'une connexion : synchro bancaire, saisie manuelle ou import de relevé.
+// Permet de rattacher un compte sans synchro bancaire tout en gardant la chaîne
+// de propriété compte → connexion → utilisateur.
+enum ConnectionSource {
+  POWENS
+  MANUAL
+  FILE_IMPORT
+}
+
 enum AccountType {
   CHECKING
   SAVINGS
@@ -84,6 +93,7 @@ model BankConnection {
   institutionId       Int?
   institutionName     String
   institutionLogo     String?
+  source              ConnectionSource @default(POWENS)
   status              ConnectionStatus @default(CONNECTED)
   
   // Jetons bancaires chiffrés au repos (AES-256-GCM)
@@ -101,7 +111,7 @@ model BankConnection {
   accounts            BankAccount[]
   syncLogs            SyncLog[]
 
-  @@index([userId])
+  @@index([userId, source])
   @@map("bank_connections")
 }
 
@@ -111,7 +121,9 @@ model BankAccount {
   powensAccountId  Int?              @unique
   name             String
   type             AccountType       @default(CHECKING)
-  currentBalance   Decimal           @db.Decimal(12, 2)
+  // null = solde inconnu (ex. compte créé depuis un relevé importé sans solde saisi).
+  // Ne jamais remplacer un solde inconnu par 0.
+  currentBalance   Decimal?          @db.Decimal(12, 2)
   currency         String            @default("EUR")
   iban             String?
   institutionName  String?
@@ -123,6 +135,10 @@ model BankAccount {
 
   connection       BankConnection    @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   transactions     BankTransaction[]
+  // Positions et crédits rattachés à ce compte : la synthèse patrimoniale compte
+  // soit le solde du compte, soit ses positions/crédits, jamais les deux.
+  investmentPositions InvestmentPosition[]
+  loans               LoanCredit[]
 
   @@index([connectionId])
   @@map("bank_accounts")
@@ -185,13 +201,17 @@ model LoanCredit {
   startDate               DateTime    @db.Date
   endDate                 DateTime    @db.Date
   insuranceMonthlyPayment Decimal?    @db.Decimal(10, 2)
-  
+  // Compte bancaire de type LOAN représentant ce même crédit, s'il existe (évite le double comptage)
+  accountId               String?     @db.Uuid
+
   createdAt               DateTime    @default(now())
   updatedAt               DateTime    @updatedAt
 
-  user                    UserProfile @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                    UserProfile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account                 BankAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([accountId])
   @@map("loans_credits")
 }
 
@@ -207,13 +227,17 @@ model InvestmentPosition {
   unitBuyPrice       Decimal               @db.Decimal(12, 4) // PRU
   currentPrice       Decimal               @db.Decimal(12, 4)
   currency           String                @default("EUR")
-  
+  // Compte bancaire de type INVESTMENT qui contient cette position, s'il existe (évite le double comptage)
+  accountId          String?               @db.Uuid
+
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
   user               UserProfile           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account            BankAccount?          @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([userId, brokerInstitution])
+  @@index([accountId])
   @@map("investment_positions")
 }
 
