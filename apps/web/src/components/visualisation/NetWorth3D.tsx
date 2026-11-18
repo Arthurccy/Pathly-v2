@@ -69,10 +69,10 @@ export function NetWorth3D({
             <NetWorthScene bars={bars} rotate={!isStatic} />
           </div>
           <figcaption className={`mt-2 text-xs ${t.muted}`}>
-            Vue 3D décorative : colonne de gauche, actifs empilés ({bars
+            Vue 3D décorative : une colonne d’actifs empilés ({bars
               .filter((b) => b.key !== 'debts')
               .map((b) => b.label.toLowerCase())
-              .join(', ')}) ; colonne de droite, dettes. Valeurs détaillées dans la vue 2D (patrimoine net{' '}
+              .join(', ')}) et une colonne de dettes séparée, en rouge. Valeurs détaillées dans la vue 2D (patrimoine net{' '}
             {formatEur(view.netWorthCents)}).
           </figcaption>
           <button
