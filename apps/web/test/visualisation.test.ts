@@ -200,6 +200,22 @@ test('adaptateur : échec avec données présentes reste une erreur', () => {
   assert.equal(state.status, 'error');
 });
 
+test('INCOMPLETE avec entrées complètes : montant null, pas de cascade', () => {
+  const v = computeHealthView({
+    month: '2026-10',
+    asOfDate: '2026-10-15',
+    safeToSpendPeriod: null,
+    status: 'INCOMPLETE',
+    currency: 'EUR',
+    incompleteReasons: ['UNSUPPORTED_CURRENCY'],
+    inputs: { availableBalance: 1500, remainingCommittedExpenses: 800, savingsReserve: 200 },
+  });
+  assert.equal(v.kind, 'resultOnly');
+  if (v.kind !== 'resultOnly') return;
+  assert.equal(v.resultCents, null);
+  assert.deepEqual(v.missing, ['Devise non prise en charge (compte hors EUR)']);
+});
+
 test('INCOMPLETE sans raison ni entrées : signalé', () => {
   const v = computeHealthView({
     month: '2026-10',

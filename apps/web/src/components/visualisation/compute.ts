@@ -227,10 +227,13 @@ export function computeHealthView(view: CashflowSummaryView): HealthView {
   if (inputs.savingsReserve === null) missing.push(HEALTH_LABELS.reserve);
 
   if (
+    view.status === 'INCOMPLETE' ||
     inputs.availableBalance === null ||
     inputs.remainingCommittedExpenses === null ||
     inputs.savingsReserve === null
   ) {
+    // Contrat : INCOMPLETE → montant null, même si toutes les entrées sont fournies.
+    if (missing.length === 0) missing.push(...reasonLabels(view.incompleteReasons));
     if (view.status !== 'INCOMPLETE') {
       issues.push(`Entrées manquantes alors que le statut est ${view.status}.`);
     }
