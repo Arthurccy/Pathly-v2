@@ -60,19 +60,14 @@ euros pour l'affichage uniquement. Tests (runner natif de Node, sans dépendance
 node --experimental-strip-types --test apps/web/test/visualisation.test.ts
 ```
 
-## Montage dans le dashboard (préparé, à réaliser avec Loris)
+## Montage dans le dashboard
 
-Non appliqué : `apps/web/src/app/page.tsx` relève de Loris, qui réserve les emplacements. Changement ciblé proposé, avec les
-fixtures identifiées tant que les sources de données ne sont pas raccordées :
+`DashboardWithVisualisations.tsx` (composant client) monte les deux composants dans les emplacements réservés par Loris
+(`financial-health`, `wealth-breakdown`) avec `tone="auto"` et `frame="none"` ; `apps/web/src/app/page.tsx` l'affiche.
+Un composant client est nécessaire : `page.tsx`, composant serveur, ne peut pas transmettre de fonctions à `DashboardView`.
 
-```tsx
-import { FinancialHealth, NetWorthBreakdown } from '@/components/visualisation';
-import { FIXTURE_LABEL, healthResultOnly, netWorthHealthy } from '@/components/visualisation/fixtures';
-
-<FinancialHealth state={healthResultOnly} tone={isDarkMode ? 'dark' : 'light'} sourceLabel={FIXTURE_LABEL} />
-<NetWorthBreakdown state={netWorthHealthy} tone={isDarkMode ? 'dark' : 'light'} sourceLabel={FIXTURE_LABEL} />
-```
-
-Les montants de ces fixtures diffèrent des données de démonstration actuelles du dashboard (`lib/mock-data.ts`) : le choix
-de la source affichée revient à Loris, qui raccorde les sources de données. Raccordement réel ensuite : `state={apiResponseToVisualState(réponse)}` à partir de `GET /cashflow/summary` (Victor) et de la
-synthèse patrimoniale (Ishak), avec `state={{ status: 'loading' }}` pendant la requête.
+- Démo avec comptes chargés : fixtures conformes aux contrats, badge « Données fictives ». Leurs montants diffèrent des
+  données de démonstration du dashboard.
+- Démo vide, en erreur, chargement ou source API : état « aucune donnée », jamais de montant inventé.
+- Raccordement réel ensuite : `state={apiResponseToVisualState(réponse)}` à partir de `GET /cashflow/summary` (Victor) et de
+  la synthèse patrimoniale (Ishak), avec `state={{ status: 'loading' }}` pendant la requête.
