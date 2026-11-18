@@ -1,12 +1,12 @@
 # Rapport de séance — Jeremy CHAN-FUNG-TING
 
-Séance : S2 · Branche / PR : `feat/front-r3f-canvas-motion` / #4 (brouillon) puis `feat/s02-jeremy-montage-dashboard` (montage, brouillon) · Ticket : `S02-JEREMY-visualisation` · Relecteur : Loris Neve
+Séance : S2 · Branche / PR : `feat/front-r3f-canvas-motion` / #4 et `feat/s02-jeremy-montage-dashboard` / #9 (fusionnées), `feat/s02-jeremy-rendu-3d` (P1, brouillon) · Ticket : `S02-JEREMY-visualisation` · Relecteur : Loris Neve
 
 ## 1. Résultat et périmètre
 
-- Livré et intégré : aucun élément au statut « intégré » (données réelles non raccordées, PR non fusionnées).
-- Livré mais pas encore intégré : P0 « validé isolément » — `FinancialHealth` (reste à dépenser) et `NetWorthBreakdown` (actifs/dettes), états chargement, vide et erreur, version sans mouvement, adaptateur `ApiResponse` → état des composants, page de développement `/dev/visualisation`. Montage dans les emplacements `financial-health` et `wealth-breakdown` du dashboard de Loris, sur fixtures identifiées.
-- Reporté ou bloqué (P0/P1/P2, raison et prochaine action) : données réelles des deux widgets — le contexte des emplacements ne transmet ni `GET /cashflow/summary` (Victor) ni `NetWorthSummaryDto` (Ishak) ; à raccorder via `apiResponseToVisualState` quand ces sources existent. P1 rendu 3D et repli sans WebGL, P2 visite guidée — non commencés.
+- Livré et intégré : aucun élément au statut « intégré » (données réelles non raccordées).
+- Livré mais pas encore intégré : P0 « validé isolément », fusionné sur `main` (PR #4 et #9) — `FinancialHealth` et `NetWorthBreakdown`, états chargement, vide et erreur, version sans mouvement, adaptateur `ApiResponse`, page `/dev/visualisation`, montage dans les emplacements `financial-health` et `wealth-breakdown` du dashboard sur fixtures identifiées. P1 « validé isolément » (PR en brouillon) — vue 3D `NetWorth3D` chargée au clic, état de chargement, repli sans WebGL.
+- Reporté ou bloqué (P0/P1/P2, raison et prochaine action) : données réelles des deux widgets — le contexte des emplacements ne transmet ni `GET /cashflow/summary` (Victor) ni `NetWorthSummaryDto` (Ishak) ; à raccorder via `apiResponseToVisualState`. P1 : mesure du coût avec Clément sur sa configuration ; vue 3D non montée dans le dashboard. P2 visite guidée — non commencée.
 
 ## 2. Fonctionnement à connaître
 
@@ -26,7 +26,7 @@ Composant : état initial « Sain — 500 € » → l’utilisateur choisit « 
 
 | Commande ou scénario | Résultat observé | Limite / preuve utile |
 | --- | --- | --- |
-| `node --experimental-strip-types --test apps/web/test/visualisation.test.ts` | Réussi | 21 tests exécutés, 21 réussis, 0 ignoré ; calculs et adaptateur, pas de rendu. Node 22.20 |
+| `node --experimental-strip-types --test apps/web/test/visualisation.test.ts` | Réussi | 23 tests exécutés, 23 réussis, 0 ignoré ; calculs, adaptateur, modèle de scène 3D et détection WebGL, pas de rendu. Node 22.20 |
 | Erreurs volontaires : réserve non soustraite ; erreur API convertie en vide ; montant affiché malgré INCOMPLETE | Réussi | Respectivement 2, 2 et 1 échecs détectés, puis 21/21 après restauration |
 | `pnpm --filter @pathly/web exec tsc --noEmit --incremental false` | Réussi | 0 erreur |
 | `pnpm --filter @pathly/web build` | Réussi | Build de production Next 15.5, Windows : `/` passe de 115 à 161 kB de JS au premier chargement avec le montage ; `/dev/visualisation` statique ; lint sauté par la configuration |
@@ -36,14 +36,17 @@ Composant : état initial « Sain — 500 € » → l’utilisateur choisit « 
 | Rendu serveur | Réussi | HTTP 200, `aria-label` complets et `noindex` dans le HTML serveur |
 | Mode sans mouvement forcé | Réussi | Aucune transformation appliquée ; en mode auto, l’animation se lance |
 | Réglage système `prefers-reduced-motion` | Non exécuté | Non émulable dans le navigateur utilisé ; repose sur `useReducedMotion` de framer-motion |
+| Vue 3D, `/dev/visualisation` (P1) | Réussi | Aucun fichier 3D avant le clic ; au clic : « Chargement de la vue 3D… », puis canvas avec contexte WebGL actif ; WebGL simulé absent : message, pas de canvas, vue 2D conservée ; aucune erreur console |
+| Coût de la vue 3D, build de production | Réussi | JS compressé au chargement de la page inchangé (149 kB, 7 fichiers) ; +249 kB téléchargés au clic (5 fichiers). `next start` local, Next 15.5, Chromium intégré, Windows, sans limitation réseau ; taille, pas de FPS |
+| Rendu visuel de la scène 3D, rotation à la souris et mode sans mouvement | Réussi | Captures d’écran : vue isométrique, couleurs plates identiques à la 2D, colonne de dettes séparée, cadrage automatique ; glisser à la souris fait tourner la scène, aussi en mode sans mouvement (sans inertie) ; aucune animation automatique |
 | Données réelles dans les widgets | Non exécuté | Dépend de Victor (PR #2) et Ishak |
 
 ## 5. Limites et transmission
 
-- Limite connue ou hypothèse : bloc `inputs` en attente de validation ; sans JavaScript, les barres animées restent à l’état initial (valeurs écrites toujours visibles) ; pas de test de rendu des composants ; montants des fixtures différents des données de démonstration du dashboard (identifiés « Données fictives ») ; coût du rendu à approfondir avec Clément ; aucun chiffre de FPS publié.
+- Limite connue ou hypothèse : vue 3D décorative, les valeurs restent dans la vue 2D ; dépendances `three` et `@react-three/fiber` ajoutées à `apps/web` (lockfile à séquencer par Arthur) ; bloc `inputs` en attente de validation ; sans JavaScript, les barres animées restent à l’état initial (valeurs écrites toujours visibles) ; pas de test de rendu des composants ; montants des fixtures différents des données de démonstration du dashboard (identifiés « Données fictives ») ; coût du rendu à approfondir avec Clément ; aucun chiffre de FPS publié.
 - Action attendue d’un collègue, responsable et interface concernée : Loris — relire la PR de montage (`page.tsx`, emplacements) ; Victor et Ishak — accepter ou refuser `inputs` dans `CashflowSummaryView` ; Victor — fusion de la PR #2, puis import des types depuis `@pathly/shared-types`.
-- Étapes de démonstration ou de reproduction : `pnpm install --frozen-lockfile`, `pnpm --filter @pathly/web dev`, ouvrir `/dev/visualisation`, changer les données avec les sélecteurs, activer « Forcer sans mouvement » ; ouvrir `/`, changer la source de données dans l’en-tête et basculer le thème.
-- Facultatif, pour la soutenance : aucune capture jointe ; toutes les données affichées sont des fixtures fictives.
+- Étapes de démonstration ou de reproduction : `pnpm install --frozen-lockfile`, `pnpm --filter @pathly/web dev`, ouvrir `/dev/visualisation`, changer les données avec les sélecteurs, activer « Forcer sans mouvement », cliquer « Afficher la vue 3D » ; ouvrir `/`, changer la source de données dans l’en-tête et basculer le thème.
+- Facultatif, pour la soutenance : captures 1440 × 900 (données fictives, sans donnée personnelle ; la bulle « N » est l’indicateur du serveur de développement Next.js) — [dashboard, thème clair](./assets/jeremy-dashboard-widgets-clair.png), [dashboard, thème sombre](./assets/jeremy-dashboard-widgets-sombre.png), [santé financière : sain, tendu, données absentes](./assets/jeremy-sante-financiere-etats.png), [patrimoine : sain, tendu, incohérent, absent](./assets/jeremy-patrimoine-etats.png), [vue 3D](./assets/jeremy-vue-3d.png), [repli sans WebGL](./assets/jeremy-vue-3d-sans-webgl.png).
 
 ## Relecture par l’auteur
 

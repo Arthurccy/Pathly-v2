@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { apiResponseToVisualState, DEFAULT_ERROR_MESSAGE } from '../src/components/visualisation/adapter.ts';
 import { computeHealthView, computeNetWorthView, toCents } from '../src/components/visualisation/compute.ts';
+import { buildSceneBars, isWebGLAvailable, MAX_HEIGHT } from '../src/components/visualisation/three/scene-model.ts';
 import {
   healthApiIncomplete,
   healthApiShortfall,
@@ -250,4 +251,42 @@ test('statut incohérent avec le signe du montant : signalé', () => {
   });
   assert.equal(v.kind, 'resultOnly');
   assert.ok(v.issues.some((i) => /AVAILABLE incohérent/.test(i)));
+});
+
+test('scène 3D : actifs empilés 2/17, 5/17, 10/17 de la hauteur max, dettes 3/17 dans une colonne séparée', () => {
+  const bars = buildSceneBars(computeNetWorthView(ready(netWorthHealthy)));
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  const assets = bars.filter((b) => b.key !== 'debts');
+  const debts = bars.filter((b) => b.key === 'debts');
+  assert.deepEqual(
+    assets.map((b) => [b.key, round(b.height)]),
+    [
+      ['liquidCash', round((2 / 17) * MAX_HEIGHT)],
+      ['investedAssets', round((5 / 17) * MAX_HEIGHT)],
+      ['tangibleAssets', round((10 / 17) * MAX_HEIGHT)],
+    ],
+  );
+  // Empilement : chaque segment commence où le précédent s'arrête ; la colonne d'actifs atteint la hauteur max.
+  const top = assets.reduce((base, b) => {
+    assert.equal(round(b.y - b.height / 2), round(base));
+    return base + b.height;
+  }, 0);
+  assert.equal(round(top), MAX_HEIGHT);
+  assert.equal(debts.length, 1);
+  assert.equal(round(debts[0].height), round((3 / 17) * MAX_HEIGHT));
+  assert.notEqual(debts[0].x, assets[0].x);
+  assert.equal(round(debts[0].y - debts[0].height / 2), 0);
+});
+
+test('détection WebGL : webgl2 ou webgl → disponible ; aucun contexte ou exception → indisponible', () => {
+  const canvas = (contexts: string[]) => () => ({ getContext: (id: string) => (contexts.includes(id) ? {} : null) });
+  assert.equal(isWebGLAvailable(canvas(['webgl2'])), true);
+  assert.equal(isWebGLAvailable(canvas(['webgl'])), true);
+  assert.equal(isWebGLAvailable(canvas([])), false);
+  assert.equal(
+    isWebGLAvailable(() => {
+      throw new Error('canvas indisponible');
+    }),
+    false,
+  );
 });
