@@ -9,7 +9,7 @@ Séance : S2 · Branche / PR : `feat/back-api-domain-mock` · Ticket : S2-VICTOR
   - service pur Safe-to-Spend et endpoint `GET /api/v1/cashflow/summary` ;
   - endpoints comptes/transactions stabilisés : dépôts injectables, validation des entrées, 404 sur ressource absente ou tierce, réponses conformes à `BankAccountDto` / `BankTransactionDto` ;
   - outillage Jest (absent à l'état initial) et 53 tests.
-- Bloqué : raccordement réel (base V2, session Supabase V2) ; génération Prisma depuis le dépôt (schéma invalide, voir §5).
+- Bloqué : raccordement réel (base V2, session Supabase V2).
 - Reporté : P1 (synthèse patrimoniale d'Ishak, estimation tarifaire simulée) ; normalisation du format d'erreur `success: false, error.code`.
 
 ## 2. Fonctionnement à connaître
@@ -39,7 +39,8 @@ Séance : S2 · Branche / PR : `feat/back-api-domain-mock` · Ticket : S2-VICTOR
 | --- | --- | --- |
 | `pnpm --filter @pathly/api test` | Réussi : 2 suites, 53 tests, 0 ignoré | Doublures pour les dépôts et l'identité, sauf un test avec le vrai guard (401 sans en-tête) |
 | Contrôle des tests par erreur volontaire | Signe de la réserve inversé → 9 échecs ; 404 supprimée → 2 échecs ; code restauré → 53 réussis | Les tests détectent ces régressions |
-| `pnpm --filter @pathly/api exec tsc --noEmit --incremental false` | Réussi | Client Prisma généré depuis une copie corrigée du schéma (§5) |
+| `prisma generate` (schéma de `main` après `67fcd1d`) | Réussi | Avant ce correctif, le schéma était invalide (§5) |
+| `pnpm --filter @pathly/api exec tsc --noEmit --incremental false` | Réussi | Après fusion de `main` dans la branche |
 | `pnpm --filter @pathly/shared-types typecheck` | Réussi | — |
 | `nest build` | Réussi ; specs et doublures exclues du build | Pas une preuve HTTP |
 | Swagger confronté aux réponses réelles | Non exécuté | Serveur non démarré (pas de base V2 ni de clés Supabase) |
@@ -47,12 +48,12 @@ Séance : S2 · Branche / PR : `feat/back-api-domain-mock` · Ticket : S2-VICTOR
 
 ## 5. Limites et transmission
 
-- **Ishak** : `packages/database/prisma/schema.prisma`, `LoanCredit.loanType @default(PERSONAL)` n'existe pas dans l'enum `LoanType` → `prisma generate` échoue. Correction à arbitrer (valeur de l'enum ou valeur par défaut).
+- Schéma Prisma : `LoanCredit.loanType @default(PERSONAL)` (absent de l'enum) faisait échouer `prisma generate` ; corrigé sur `main` par `67fcd1d` (`@default(CONSUMER)`), fusionné dans cette branche et revérifié.
 - **Arthur** : dépendances de dev ajoutées à `@pathly/api` (jest 29.7.0, ts-jest 29.2.5, @types/jest, supertest 7.0.0, @types/supertest) ; lockfile mis à jour. Sur ma machine, `pnpm install --frozen-lockfile` plante dans les scripts postinstall (`readStream must be readable`) ; contournement : `--ignore-scripts` puis génération Prisma manuelle.
 - **Loris / Jeremy** : changement de forme des réponses comptes/transactions (DTO partagés, plus d'objets imbriqués `connection` / `account`). Charges restantes et réserve sont des paramètres de simulation en S2.
 - **Ishak (client API)** : nouvelle route `/cashflow/summary` à ajouter au client web.
 - Erreurs au format NestJS par défaut, pas encore la forme cible du contrat.
-- Reproduction : `pnpm install --frozen-lockfile`, `pnpm db:generate` (après correction du schéma), `pnpm --filter @pathly/api test`.
+- Reproduction : `pnpm install --frozen-lockfile`, `pnpm db:generate`, `pnpm --filter @pathly/api test`.
 
 ## Relecture par l'auteur
 
