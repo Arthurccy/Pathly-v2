@@ -1,6 +1,6 @@
 # Rapport de séance — Ishak MESSAOUDI
 
-Séance : S2 · Branche / PR : `feat/fullstack-prisma-seed-bridge` / PR à ouvrir · Ticket : Ishak — Contrats, données et synthèse patrimoniale · Relecteur : Clément Laumond
+Séance : S2 · Branche / PR : `feat/fullstack-prisma-seed-bridge` / [#14](https://github.com/Arthurccy/Pathly-v2/pull/14) · Ticket : Ishak — Contrats, données et synthèse patrimoniale · Relecteur : Clément Laumond (P0 isolé approuvé)
 
 ## 1. Résultat et périmètre
 
@@ -61,6 +61,9 @@ Environnement : Windows, Node 25.2.1, pnpm 9.15.4, PostgreSQL 15 dans Docker (ba
 - **Victor** : avec `currentBalance` nullable, `toBankAccountDto` (`accounts.repository.ts`) ferait `null.toString()` → erreur 500 sur `GET /accounts`, et `CashflowService` doit traiter un solde inconnu comme `INCOMPLETE`. Le compilateur ne le signale pas (`strictNullChecks: false` dans `packages/tsconfig/nestjs.json`). Aucun solde `null` n'est écrit aujourd'hui : à corriger avant que Rémy passe à `null`. Règle de patrimoine proposée : positions/crédits liés remplacent le solde de leur compte.
 - **Victor / Rémy** : `sync.service.ts` écrit un `SyncLog` avec le numéro Powens comme `connectionId` en cas d'erreur (clé étrangère invalide, erreur silencieuse).
 - **Yann** : `ApiClient.getMe` / `updateMe` prêts pour sa route `/me` ; le jeton reste fourni par `lib/dashboard/session.ts`.
+- Synthèse patrimoniale : aucun code ne calcule encore les 14 000 € (vérifiés en SQL seulement). Sans la règle « le lien remplace le solde », la somme naïve donne 16 000 € : c'est le P1.
+- Isolation : aucune politique RLS dans les migrations ; le filtrage par propriétaire reste celui de l'API. Contrôle prévu en S9 (isolation et migrations).
+- Vercel : check rouge « Authorization required to deploy » car la PR vient d'un fork ; ce n'est pas un échec de build (CI du dépôt verte, run `44325656925`). Pour les prochaines PR, pousser la branche sur le dépôt de l'équipe si Arthur le confirme.
 - Version PostgreSQL de Supabase V2 à confirmer (tests sur 15).
 - Reproduction : voir `packages/database/README.md`.
 
