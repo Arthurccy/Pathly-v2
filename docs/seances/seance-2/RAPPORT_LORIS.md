@@ -1,12 +1,12 @@
 # Rapport de séance — Loris Neve
 
-Séance : S2 · Branche / PR : `feat/front-shadcn-responsive-layout` (PR à ouvrir) · Ticket : Dashboard et parcours utilisateur · Relecteur : Jeremy
+Séance : S2 · Branche / PR : `feat/front-shadcn-responsive-layout` (locale, non publiée) · Ticket : Dashboard et parcours utilisateur · Relecteur : Jeremy
 
 ## 1. Résultat et périmètre
 
 - Livré et intégré : dashboard découpé en composants avec états chargement / vide / erreur pour comptes et opérations, source de démonstration identifiée, navigation clavier, mode clair/sombre.
 - Livré mais pas encore intégré : source API réelle (adaptateur et normalisation prêts, mais aucune session disponible : erreur `SESSION_REQUIRED` explicite) ; emplacements des widgets trésorerie, patrimoine, santé financière et répartition (repères vides, aucun composant de Victor, Ishak ou Jeremy raccordé).
-- Reporté : P1 (mutation optimiste avec Clément, composant de Jeremy, saisie de bien physique, sélecteur de personas) et P2. Captures d'écran mobile/desktop à prendre manuellement (voir §5).
+- Reporté : P1 (mutation optimiste avec Clément, composant de Jeremy, saisie de bien physique, sélecteur de personas) et P2. Captures d'écran mobile/desktop non encore ajoutées (voir §5).
 
 ## 2. Fonctionnement à connaître
 
@@ -28,7 +28,8 @@ Séance : S2 · Branche / PR : `feat/front-shadcn-responsive-layout` (PR à ouvr
 | `pnpm --filter @pathly/web exec tsc --noEmit --incremental false` | Réussi | Types uniquement |
 | `pnpm --filter @pathly/web build` | Réussi | Lint ignoré par la configuration actuelle |
 | Navigateur intégré, serveur `next dev` : états nominal / vide / erreur / API, filtres, changement de mois, thème sombre | Réussi | Parcours manuel, non automatisé |
-| Navigation clavier (Tab, Entrée sur les mois) | Réussi : ordre logique lien d'évitement → navigation → source → thème → mois → recherche → catégorie | Anneau de focus non mesuré visuellement |
+| Navigation clavier (Tab, Entrée sur les mois) | Réussi : ordre logique lien d'évitement → navigation → source → thème → mois → recherche → catégorie | Ordre vérifié par script dans le navigateur intégré |
+| Vérification manuelle par Loris : anneaux de focus et déplacements au clavier (listes, boutons) | Réussi : anneau visible sur tous les éléments, déplacements corrects | Constat manuel de l'auteur ; navigateur non précisé |
 | Largeur 390 px et 1440 px : débordement horizontal | Aucun | Mesure `scrollWidth`/`clientWidth` ; captures de l'outil peu fiables, non versionnées |
 | Contrôles ad hoc (script jetable, non conservé) : normalisation API (montant en chaîne, date ISO, entrée invalide), masquage IBAN, totaux d'octobre | Réussi | Aucun test automatisé dans le dépôt : `apps/web` n'a pas de runner |
 
@@ -37,7 +38,8 @@ Séance : S2 · Branche / PR : `feat/front-shadcn-responsive-layout` (PR à ouvr
 - Limite : transactions API limitées à 50, sans pagination ; totaux informatifs hors calcul de trésorerie ; logos remplacés par des initiales.
 - Attendu des collègues : Yann — fournir `getAccessToken` (`apps/web/src/lib/dashboard/session.ts`) ; Victor, Ishak, Jeremy — monter leurs composants via la prop `widgets` ; Ishak — aligner le contrat API (Decimal, IBAN) ; Clément — recette du parcours.
 - Reproduction : `pnpm install --frozen-lockfile`, `pnpm --filter @pathly/web dev`, ouvrir `http://localhost:3000`, changer la source dans l'en-tête.
-- À faire avant démonstration : captures mobile et desktop et vérification visuelle du focus au clavier.
+- À faire avant démonstration : captures mobile et desktop (non versionnées à ce jour).
+- État Git : branche locale uniquement, non publiée ; PR non ouverte.
 
 ## Relecture par l'auteur
 
