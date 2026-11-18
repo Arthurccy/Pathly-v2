@@ -3,7 +3,7 @@ export interface NormalizedImportTransaction {
   date: string; // YYYY-MM-DD
   rawDescription: string;
   cleanedDescription?: string | null;
-  amount: number; // Centimes ou décimal (négatif pour dépense, positif pour revenu)
+  amount: number; // Nombre décimal en euros (négatif pour dépense, positif pour revenu)
   currency: string;
   category?: string | null;
   fingerprint: string; // Signature déterministe de la ligne (ex: hash sha256 date+description+montant+index)
@@ -16,7 +16,7 @@ export interface ImportRowError {
   reason: string;
 }
 
-export interface ParseResult {
+export interface ImportPreviewResult {
   totalRows: number;
   validCount: number;
   errorCount: number;
@@ -24,6 +24,9 @@ export interface ParseResult {
   errors: ImportRowError[];
   fileFingerprint: string;
 }
+
+// Alias de rétrocompatibilité
+export type ParseResult = ImportPreviewResult;
 
 export interface CsvMappingConfig {
   hasHeader?: boolean;
@@ -39,5 +42,5 @@ export interface CsvMappingConfig {
 
 export interface IStatementParser {
   readonly supportedFormat: 'CSV' | 'OFX';
-  parse(content: string, config?: CsvMappingConfig): ParseResult;
+  parse(content: string, config?: CsvMappingConfig): ImportPreviewResult;
 }

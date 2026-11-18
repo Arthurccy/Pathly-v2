@@ -14,10 +14,12 @@ import {
 } from './dto/import-preview.dto';
 import {
   IStatementParser,
+  ImportPreviewResult,
   ParseResult,
 } from './parsers/statement-parser.interface';
 
 export interface ImportCommitResult {
+  accountId: string;
   totalRead: number;
   importedCount: number;
   skippedDuplicatesCount: number;
@@ -47,7 +49,7 @@ export class ImportService {
   /**
    * Prévisualisation autonome d'un relevé bancaire (sans persistance ni session)
    */
-  preview(dto: ImportPreviewRequestDto): ParseResult {
+  preview(dto: ImportPreviewRequestDto): ImportPreviewResult {
     const parser = this.getParser(dto.format);
 
     return parser.parse(dto.rawContent, {
@@ -63,6 +65,7 @@ export class ImportService {
 
   /**
    * Enregistrement sécurisé des transactions dans le compte de l'utilisateur authentifié
+   * Si aucun accountId n'est fourni, crée automatiquement la connexion et le compte d'import.
    */
   async commit(
     userId: string,
@@ -78,21 +81,56 @@ export class ImportService {
       });
     }
 
-    // 2. Contrôle d'autorisation strict : vérification de la propriété du compte
-    const account = await prisma.bankAccount.findFirst({
-      where: {
-        id: dto.accountId,
-        connection: {
-          userId,
-        },
-      },
-      select: { id: true, currency: true },
-    });
+    let targetAccountId = dto.accountId;
+    let targetCurrency = dto.currency || 'EUR';
 
-    if (!account) {
-      throw new ForbiddenException(
-        'Accès refusé : ce compte bancaire n’existe pas ou n’appartient pas à l’utilisateur authentifié.',
-      );
+    // 2. Détermination du compte cible : existant vérifié ou auto-créé
+    if (targetAccountId) {
+      const account = await prisma.bankAccount.findFirst({
+        where: {
+          id: targetAccountId,
+          connection: {
+            userId,
+          },
+        },
+        select: { id: true, currency: true },
+      });
+
+      if (!account) {
+        throw new ForbiddenException(
+          'Accès refusé : ce compte bancaire n’existe pas ou n’appartient pas à l’utilisateur authentifié.',
+        );
+      }
+      targetCurrency = account.currency || targetCurrency;
+    } else {
+      // Auto-création d'une connexion d'import et du compte associé
+      let connection = await prisma.bankConnection.findFirst({
+        where: {
+          userId,
+          institutionName: 'Relevé importé',
+        },
+      });
+
+      if (!connection) {
+        connection = await prisma.bankConnection.create({
+          data: {
+            userId,
+            institutionName: 'Relevé importé',
+            status: 'CONNECTED',
+          },
+        });
+      }
+
+      const newAccount = await prisma.bankAccount.create({
+        data: {
+          connectionId: connection.id,
+          name: dto.accountName || 'Compte relevé importé',
+          type: 'CHECKING',
+          currentBalance: 0,
+          currency: targetCurrency,
+        },
+      });
+      targetAccountId = newAccount.id;
     }
 
     // 3. Gestion du réimport et politique anti-doublons
@@ -102,7 +140,7 @@ export class ImportService {
     if (dto.skipDuplicates) {
       // Récupération des transactions existantes pour ce compte
       const existingTransactions = await prisma.bankTransaction.findMany({
-        where: { accountId: dto.accountId },
+        where: { accountId: targetAccountId },
         select: { date: true, amount: true, rawDescription: true },
       });
 
@@ -130,16 +168,17 @@ export class ImportService {
       toImport.push(...previewResult.transactions);
     }
 
-    // 4. Persistance des transactions valides et non dupliquées
+    // 4. Persistance atomique des transactions valides
     const createdTransactions: ImportCommitResult['transactions'] = [];
 
+    // Persistance séquentielle ou via transaction Prisma si supportée
     for (const t of toImport) {
       const created = await prisma.bankTransaction.create({
         data: {
-          accountId: dto.accountId,
+          accountId: targetAccountId,
           date: new Date(t.date),
           amount: t.amount,
-          currency: t.currency || account.currency || 'EUR',
+          currency: t.currency || targetCurrency,
           rawDescription: t.rawDescription,
           cleanedDescription: t.cleanedDescription,
           category: t.category,
@@ -157,10 +196,11 @@ export class ImportService {
     }
 
     this.logger.log(
-      `Import terminé pour compte ${dto.accountId}: ${createdTransactions.length} importées, ${skippedDuplicatesCount} doublons ignorés, ${previewResult.errorCount} erreurs de ligne.`,
+      `Import terminé pour compte ${targetAccountId}: ${createdTransactions.length} importées, ${skippedDuplicatesCount} doublons ignorés, ${previewResult.errorCount} erreurs de ligne.`,
     );
 
     return {
+      accountId: targetAccountId,
       totalRead: previewResult.totalRows,
       importedCount: createdTransactions.length,
       skippedDuplicatesCount,

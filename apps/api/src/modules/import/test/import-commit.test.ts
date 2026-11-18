@@ -110,6 +110,50 @@ async function runCommitTests() {
     }
   });
 
+  // 4. Auto-création de compte si accountId omis
+  await test('4. Auto-création de la connexion et du compte si accountId n’est pas fourni', async () => {
+    const originalConnFindFirst = prisma.bankConnection.findFirst;
+    const originalConnCreate = prisma.bankConnection.create;
+    const originalAccCreate = prisma.bankAccount.create;
+    const originalTxCreate = prisma.bankTransaction.create;
+    const originalTxFindMany = prisma.bankTransaction.findMany;
+
+    let connectionCreated = false;
+    let accountCreated = false;
+
+    (prisma.bankConnection as any).findFirst = async () => null; // Pas de connexion existante
+    (prisma.bankConnection as any).create = async ({ data }: any) => {
+      connectionCreated = true;
+      return { id: 'conn-auto-1', ...data };
+    };
+    (prisma.bankAccount as any).create = async ({ data }: any) => {
+      accountCreated = true;
+      return { id: 'acc-auto-1', ...data };
+    };
+    (prisma.bankTransaction as any).findMany = async () => [];
+    (prisma.bankTransaction as any).create = async ({ data }: any) => {
+      return { id: 'tx-1', ...data };
+    };
+
+    try {
+      const result = await importService.commit('user-remi', {
+        rawContent: 'date;libelle;montant\n2026-10-12;CB MONOPRIX PARIS;-42,50',
+        format: StatementFormat.CSV,
+      });
+
+      assert.strictEqual(connectionCreated, true, 'Doit auto-créer la connexion');
+      assert.strictEqual(accountCreated, true, 'Doit auto-créer le compte bancaire');
+      assert.strictEqual(result.accountId, 'acc-auto-1');
+      assert.strictEqual(result.importedCount, 1);
+    } finally {
+      prisma.bankConnection.findFirst = originalConnFindFirst;
+      prisma.bankConnection.create = originalConnCreate;
+      prisma.bankAccount.create = originalAccCreate;
+      prisma.bankTransaction.create = originalTxCreate;
+      prisma.bankTransaction.findMany = originalTxFindMany;
+    }
+  });
+
   console.log(`\nTests commit terminés : ${passed} réussis, ${failed} échoués.\n`);
   if (failed > 0) {
     process.exit(1);

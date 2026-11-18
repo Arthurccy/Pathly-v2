@@ -108,13 +108,22 @@ export class ImportPreviewRequestDto {
 }
 
 export class ImportCommitRequestDto extends ImportPreviewRequestDto {
-  @ApiProperty({
-    description: 'Identifiant UUID du compte bancaire cible dans Pathly',
+  @ApiPropertyOptional({
+    description: 'Identifiant UUID du compte bancaire cible dans Pathly (si omis, le compte est auto-créé)',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  accountId!: string;
+  accountId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Nom du compte à attribuer lors de l’auto-création si accountId est omis',
+    example: 'Compte Courant Importé',
+    default: 'Compte Relevé Importé',
+  })
+  @IsOptional()
+  @IsString()
+  accountName?: string;
 
   @ApiPropertyOptional({
     description: 'Si true, ignore silencieusement les transactions détectées comme réimportées',
