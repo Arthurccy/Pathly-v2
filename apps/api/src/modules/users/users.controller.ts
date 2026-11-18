@@ -9,16 +9,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
 import type { ApiResponse, UserProfileDto } from '@pathly/shared-types';
 import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
+import type { AuthenticatedRequest } from '../../common/types/authenticated-request';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ProfileHttpExceptionFilter } from './profile-http-exception.filter';
-
-interface AuthenticatedRequest extends Request {
-  user: { id: string; email?: string };
-}
 
 @ApiTags('User profile')
 @ApiBearerAuth()

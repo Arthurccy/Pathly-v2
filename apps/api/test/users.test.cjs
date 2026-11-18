@@ -206,8 +206,12 @@ test('PATCH /me valide la saisie et ne modifie que le profil authentifié', asyn
 
     const invalid = await patch({ fullName: '  ' });
     assert.equal(invalid.status, 400);
-    assert.equal((await invalid.json()).success, false);
+    const invalidBody = await invalid.json();
+    assert.equal(invalidBody.success, false);
+    assert.equal(invalidBody.error.code, 'VALIDATION_ERROR');
     assert.equal((await patch({ fullName: null })).status, 400);
+    assert.equal((await patch({ fullName: 'A'.repeat(101) })).status, 400);
+    assert.equal((await patch({ fullName: 'A'.repeat(100) })).status, 200);
     assert.equal((await patch({ fullName: 'Nom', id: 'user-b' })).status, 400);
     const valid = await patch({ fullName: '  Alice Test  ' });
     assert.equal(valid.status, 200);

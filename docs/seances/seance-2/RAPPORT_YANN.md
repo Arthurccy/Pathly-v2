@@ -8,12 +8,13 @@ Séance : 2 · Branche : `feat/auth-user-account` · Ticket : Yann — compte ut
 - Non intégré ni validé avec Supabase V2 et une base réelle. La PR et la revue restent à préparer ; la branche locale a été rebasée sur `origin/main` et diverge de sa branche distante.
 - P0 restant : connexion valide et invalide, comptes du propriétaire, déconnexion et refus sans session dans l'environnement de développement. P1 restant : validation réelle de la restauration et de l'expiration de session, et du profil avec deux utilisateurs.
 - P2 : récupération de mot de passe non réalisée ; dépend de la configuration des e-mails et des URLs de retour.
+- Après rebase sur la PR #14 d'Ishak : contrat partagé et client API d'Ishak conservés ; règle de nom à 100 caractères et code `VALIDATION_ERROR` appliqués aux paramètres.
 
 ## 2. Fonctionnement à connaître
 
 - Points d'entrée : [connexion](../../../apps/web/src/app/connexion/page.tsx), [paramètres](../../../apps/web/src/app/parametres/page.tsx), [module utilisateur API](../../../apps/api/src/modules/users/users.module.ts).
 - La session Supabase du navigateur fournit le token pour les appels API. Le guard existant valide l'identité ; `/me` utilise son UUID pour retrouver ou créer le profil, puis la page de connexion demande les comptes.
-- [Contrat de profil](../../architecture/CONTRATS_SEANCE_2.md#profil-courant--proposition-préparée-avec-ishak) : `GET /me`, `PATCH /me` et erreur de conflit d'e-mail. Hypothèse de validation du nom à confirmer avec Ishak. Les fixtures de tests sont fictives.
+- [Contrat de profil](../../architecture/CONTRATS_SEANCE_2.md#profil-courant--proposition-préparée-avec-ishak) : `GET /me`, `PATCH /me` et erreur de conflit d'e-mail. Le nom est limité à 100 caractères conformément au contrat partagé. Les fixtures de tests sont fictives.
 - `/me` est appelé avant les comptes dans ce parcours web ; l'import doit vérifier côté API que le profil existe. Aucune protection d'import n'a été ajoutée ici.
 - La déconnexion retire la session utilisée par l'interface. Un access token déjà émis peut rester valable jusqu'à son expiration ; le refus testé ci-dessous porte sur une requête sans token.
 
@@ -34,15 +35,18 @@ Séance : 2 · Branche : `feat/auth-user-account` · Ticket : Yann — compte ut
 | `pnpm --filter @pathly/api exec tsc --noEmit --incremental false` | Réussi | Contrôle de types, pas une recette HTTP réelle |
 | `pnpm --filter @pathly/shared-types typecheck` | Réussi | Contrôle de types |
 | `pnpm --filter @pathly/web build` | Réussi | Build et types ; le build saute le lint |
+| `pnpm --filter @pathly/web test:unit` | 23 tests réussis, aucun ignoré | Suite web existante, y compris client API |
+| `pnpm --filter @pathly/api exec jest --runInBand` | 53 tests réussis, aucun ignoré | Suite API existante ; tests de profil exécutés séparément ci-dessus |
 | Navigateur local avec réponses Supabase et API interceptées | Réussi avec doublures | Identifiants refusés, connexion, compte fictif, modification du nom et déconnexion ; aucune connexion réelle |
 | Parcours Supabase V2 + comptes réels | Non exécuté | Configuration et compte fictif V2 à confirmer ; ne pas utiliser la production |
 
 ## 5. Limites et transmission
 
-- Ishak : relire le contrat et le conflit d'e-mail, confirmer la validation du nom et la politique de synchronisation d'e-mail.
+- Ishak : relire le raccordement au contrat et le conflit d'e-mail, confirmer la politique de synchronisation d'e-mail.
 - Rémy : vérifier l'existence du profil dans l'API d'import indépendamment de l'ordre des appels web.
 - Victor : confirmer l'isolation des comptes et la correspondance des identifiants avec des utilisateurs fictifs.
 - Loris : coordonner les liens vers la connexion et les paramètres depuis le dashboard.
+- La source API du dashboard utilise encore son adaptateur de session provisoire ; sa connexion à la session réelle reste à coordonner avec Loris.
 - Reproduction isolée : générer Prisma, exécuter les deux commandes de tests ci-dessus, puis le build web. Ne pas renseigner de secret dans le rapport.
 
 ## Relecture par l’auteur

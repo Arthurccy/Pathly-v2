@@ -38,7 +38,7 @@ export class ProfileHttpExceptionFilter implements ExceptionFilter {
           : exception.message;
     response.status(status).json({
       success: false,
-      error: { code: `HTTP_${status}`, message },
+      error: { code: status === 400 ? 'VALIDATION_ERROR' : `HTTP_${status}`, message },
     });
   }
 }
