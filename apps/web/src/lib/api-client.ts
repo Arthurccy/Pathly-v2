@@ -128,6 +128,7 @@ export class ApiClient {
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
+        cache: requireAuth ? 'no-store' : undefined,
       });
       const payload = await readBody(response);
 

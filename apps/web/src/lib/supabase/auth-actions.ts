@@ -1,4 +1,4 @@
-import type { ApiResponse, BankAccountDto } from '@pathly/shared-types';
+import type { ApiResponse, BankAccountDto, UserProfileDto } from '@pathly/shared-types';
 
 export interface LoginCredentials {
   email: string;
@@ -6,6 +6,7 @@ export interface LoginCredentials {
 }
 
 export interface AccountsApiPort {
+  getMe(jwtToken: string): Promise<ApiResponse<UserProfileDto>>;
   getAccounts(jwtToken: string): Promise<ApiResponse<BankAccountDto[]>>;
 }
 
@@ -23,7 +24,7 @@ export interface SupabaseAuthPort {
 }
 
 export type AuthActionResult =
-  | { success: true; email: string; accounts: BankAccountDto[] }
+  | { success: true }
   | { success: false; message: string };
 
 export type SignOutResult =
@@ -38,6 +39,14 @@ export async function loadAccounts(
   api: AccountsApiPort,
   accessToken: string,
 ): Promise<AccountsLoadResult> {
+  const profile = await api.getMe(accessToken);
+  if (!profile.success || !profile.data) {
+    return {
+      success: false,
+      message: profile.error?.message ?? 'Impossible de préparer votre profil.',
+    };
+  }
+
   const response = await api.getAccounts(accessToken);
 
   if (!response.success) {
@@ -59,7 +68,6 @@ export async function loadAccounts(
 
 export async function signIn(
   auth: SupabaseAuthPort,
-  api: AccountsApiPort,
   credentials: LoginCredentials,
 ): Promise<AuthActionResult> {
   const { data, error } = await auth.signInWithPassword(credentials);
@@ -75,16 +83,7 @@ export async function signIn(
     };
   }
 
-  const accountsResult = await loadAccounts(api, data.session.access_token);
-  if (!accountsResult.success) {
-    return accountsResult;
-  }
-
-  return {
-    success: true,
-    email: data.user.email ?? credentials.email,
-    accounts: accountsResult.accounts,
-  };
+  return { success: true };
 }
 
 export async function signOut(
