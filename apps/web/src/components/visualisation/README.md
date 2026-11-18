@@ -79,6 +79,8 @@ Un composant client est nécessaire : `page.tsx`, composant serveur, ne peut pas
 - Bouton « Afficher la vue 3D » : la scène (`three/NetWorthScene.tsx`, `three` + `@react-three/fiber`) n'est téléchargée qu'au clic,
   par import dynamique sans rendu serveur, avec un état « Chargement de la vue 3D… ».
 - Sans WebGL : message explicite, aucun canvas ; la vue 2D `NetWorthBreakdown` reste la version de référence.
-- Colonne d'actifs empilés et colonne de dettes séparée, mêmes proportions que la vue 2D (`three/scene-model.ts`).
-  Décorative (`aria-hidden`) : les valeurs restent écrites dans la vue 2D. Rotation désactivée en mode sans mouvement.
-- Coût mesuré (build de production) : chargement de la page inchangé, +244 kB de JS compressé au clic.
+- Vue isométrique (caméra orthographique, cadrage automatique) : colonne d'actifs empilés et colonne de dettes séparée,
+  mêmes proportions (`three/scene-model.ts`), mêmes couleurs et motifs que la vue 2D, ombrage plat sans éclairage simulé.
+- Décorative (`aria-hidden`) : les valeurs restent écrites dans la vue 2D. Aucune animation automatique ; rotation à la
+  souris autour de l'axe vertical, sans inertie en mode sans mouvement.
+- Coût mesuré (build de production) : chargement de la page inchangé, +249 kB de JS compressé au clic.

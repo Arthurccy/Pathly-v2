@@ -37,8 +37,8 @@ Composant : état initial « Sain — 500 € » → l’utilisateur choisit « 
 | Mode sans mouvement forcé | Réussi | Aucune transformation appliquée ; en mode auto, l’animation se lance |
 | Réglage système `prefers-reduced-motion` | Non exécuté | Non émulable dans le navigateur utilisé ; repose sur `useReducedMotion` de framer-motion |
 | Vue 3D, `/dev/visualisation` (P1) | Réussi | Aucun fichier 3D avant le clic ; au clic : « Chargement de la vue 3D… », puis canvas avec contexte WebGL actif ; WebGL simulé absent : message, pas de canvas, vue 2D conservée ; aucune erreur console |
-| Coût de la vue 3D, build de production | Réussi | JS compressé au chargement de la page inchangé (149 kB, 7 fichiers) ; +244 kB téléchargés au clic (4 fichiers). `next start` local, Next 15.5, Chromium intégré, Windows, sans limitation réseau ; taille, pas de FPS |
-| Rendu visuel de la scène 3D, rotation et mode sans mouvement | Réussi | Captures d’écran : colonne d’actifs empilés et colonne de dettes séparée ; rotation en mode normal ; deux captures à 3 s d’intervalle identiques en mode sans mouvement |
+| Coût de la vue 3D, build de production | Réussi | JS compressé au chargement de la page inchangé (149 kB, 7 fichiers) ; +249 kB téléchargés au clic (5 fichiers). `next start` local, Next 15.5, Chromium intégré, Windows, sans limitation réseau ; taille, pas de FPS |
+| Rendu visuel de la scène 3D, rotation à la souris et mode sans mouvement | Réussi | Captures d’écran : vue isométrique, couleurs plates identiques à la 2D, colonne de dettes séparée, cadrage automatique ; glisser à la souris fait tourner la scène, aussi en mode sans mouvement (sans inertie) ; aucune animation automatique |
 | Données réelles dans les widgets | Non exécuté | Dépend de Victor (PR #2) et Ishak |
 
 ## 5. Limites et transmission
