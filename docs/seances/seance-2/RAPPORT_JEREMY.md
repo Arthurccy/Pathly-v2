@@ -1,72 +1,53 @@
 # Rapport de séance — Jeremy CHAN-FUNG-TING
 
-Séance : S2 · Branche / PR : `feat/front-r3f-canvas-motion` / PR brouillon · Ticket : S2 — Visualisation financière et interactions · Relecteur : Loris
+Séance : S2 · Branche / PR : `feat/front-r3f-canvas-motion` / #4 (brouillon) · Ticket : `S02-JEREMY-visualisation` · Relecteur : Loris Neve
 
 ## 1. Résultat et périmètre
 
-- Livré et intégré : rien d'intégré au dashboard pour l'instant.
-- Livré mais pas encore intégré (P0, **validé isolément**) : composants `FinancialHealth` (reste à dépenser) et `NetWorthBreakdown`
-  (répartition actifs/dettes), états chargement / vide / erreur, version sans mouvement, page de développement `/dev/visualisation`.
-- Reporté ou bloqué :
-  - P0 montage dashboard avec Loris : à faire dans une PR de raccordement ciblée (emplacements à réserver dans `page.tsx`, fichier de Loris).
-  - P1 rendu 3D chargé à la demande et repli sans WebGL : non commencé.
-  - P2 visite guidée : non commencée.
+- Livré et intégré : aucun élément intégré au dashboard.
+- Livré mais pas encore intégré : P0 « validé isolément » — `FinancialHealth` (reste à dépenser) et `NetWorthBreakdown` (actifs/dettes), états chargement, vide et erreur, version sans mouvement, adaptateur `ApiResponse` → état des composants, page de développement `/dev/visualisation`.
+- Reporté ou bloqué (P0/P1/P2, raison et prochaine action) : P0 montage dashboard — à réaliser avec Loris (emplacements réservés par lui dans `page.tsx`) ; montage préparé dans le README du dossier. P1 rendu 3D et repli sans WebGL, P2 visite guidée — non commencés, après intégration du P0.
 
 ## 2. Fonctionnement à connaître
 
-- Point d'entrée : `apps/web/src/components/visualisation/` (`index.ts`, documentation des props dans `README.md`).
-  Emplacement du dossier proposé, **à confirmer avec Loris**.
-- Chemin des données : l'intégrateur passe un `VisualState<T>` ; `compute.ts` convertit les euros en centimes entiers, calcule
-  positions et parts, et liste les incohérences ; les composants n'affichent que ce résultat. Aucun appel réseau ni Supabase.
-- Décisions :
-  - dettes dans une barre séparée sur la même échelle que les actifs (jamais une part d'un graphique d'actifs) ;
-  - textures + valeurs écrites pour ne pas porter l'information par la seule couleur ;
-  - libellé d'état = statut reçu de l'API, sans seuil « tendu » inventé ;
-  - incohérences signalées sans correction silencieuse ; donnée absente ≠ 0 €.
-- Contrats : `NetWorthSummaryDto` existant (non modifié). Santé financière : compatible avec `CashflowSummaryDto`
-  de la PR #2 de Victor (brouillon, `CONTRAT_CASHFLOW_S2.md`), y compris `incompleteReasons` ; types recopiés localement
-  jusqu'à la fusion de cette PR. Bloc optionnel `inputs` **proposé**, à valider avec Victor et Ishak. Fixtures : `fixtures.ts`
-  (dont l'exemple exact du contrat de Victor et une réponse INCOMPLETE à son format).
-- Validation isolée avec fixtures ; raccordement réel restant : API trésorerie (Victor), synthèse patrimoniale (Ishak), montage (Loris).
+- Point d’entrée et fichiers principaux : `apps/web/src/components/visualisation/` — `index.ts`, `FinancialHealth.tsx`, `NetWorthBreakdown.tsx`, `compute.ts`, `adapter.ts`, `contracts.ts`, `fixtures.ts`, `README.md` (props). Emplacement à confirmer avec Loris.
+- Chemin des données en deux ou trois phrases : l’intégrateur passe un `VisualState<T>`, directement ou via `apiResponseToVisualState(réponse)`. `compute.ts` convertit les euros en centimes entiers, calcule positions et parts et liste les incohérences ; les composants n’affichent que ce résultat, sans appel réseau ni Supabase.
+- Décision importante et raison : dettes dans une barre séparée sur la même échelle que les actifs, pour ne jamais en faire une part des actifs ; textures et valeurs écrites, pour ne pas porter l’information par la seule couleur ; libellé d’état repris du statut reçu, sans seuil « tendu » inventé.
+- Contrat consommé/exposé, version ou référence et fixture utilisée : `NetWorthSummaryDto` (existant, non modifié) ; `CashflowSummaryDto` de la PR #2 de Victor (brouillon, `CONTRAT_CASHFLOW_S2.md`), types de statut et de raison recopiés localement jusqu’à sa fusion ; `ApiResponse<T>` existant. Bloc optionnel `inputs` proposé, à valider avec Victor et Ishak. Fixtures : `fixtures.ts`, au format exact du contrat et, séparément, au format de la proposition.
+- Validation isolée avec doublure ou intégration réelle ; raccordement restant : validation isolée sur fixtures. Restent le montage (Loris) et les données réelles : `GET /cashflow/summary` (Victor) et synthèse patrimoniale (Ishak).
 
 ## 3. Exemple concret vérifié
 
-- Trésorerie : solde 1 500 €, charges restantes 800 €, réserve 200 € → attendu 500 € (exemple du contrat, calcul à la main).
-  Observé : 500,00 €, statut « Disponible », cascade 0→1 500→700→500.
-- Cas limite : 900 − 800 − 200 → attendu −100 €, statut SHORTFALL. Observé : −100,00 € en rouge, barre à gauche du repère 0 € (non ramené à zéro).
-- Donnée manquante : charges `null` → « Indisponible » et « Données manquantes : Charges restantes ».
-- Patrimoine : 2 000 + 5 000 + 10 000 − 3 000 → attendu 14 000 € ; observé 14 000,00 €, parts 12 % / 29 % / 59 %, dettes à part.
-- Erreur : synthèse aux totaux faux (18 000 € d'actifs déclarés pour 17 000 € de catégories) → deux incohérences affichées, valeurs reçues conservées.
+Calcul : solde 1 500 €, charges restantes 800 €, réserve 200 € → disponible attendu 500 € (exemple du contrat, recalculé à la main). Observé : 500,00 €, « Disponible ». Cas limite : 900 − 800 − 200 → −100 € attendu ; observé −100,00 € en rouge, « Déficit estimé », non ramené à 0. Patrimoine : 2 000 + 5 000 + 10 000 − 3 000 → 14 000 € attendu ; observé 14 000,00 €, parts 12 % / 29 % / 59 %, dettes à part.
+
+Composant : état initial « Sain — 500 € » → l’utilisateur choisit « Données absentes » au clavier dans la page de dev → affichage attendu « Indisponible » et la raison reçue ; observé « Données manquantes : Solde disponible (aucun compte courant) ». Erreur : réponse `success: false` → message d’erreur affiché, jamais 0 €.
 
 ## 4. Vérifications réellement exécutées
 
 | Commande ou scénario | Résultat observé | Limite / preuve utile |
 | --- | --- | --- |
-| `pnpm --filter @pathly/web test` | Réussi : 15 tests, 15 passés, 0 ignoré | Calculs purs uniquement, pas de test de rendu. Node ≥ 22.18 requis (testé en 22.20) |
-| Mutation volontaire (réserve non soustraite) | 2 tests en échec, puis tous réussis après restauration | Les tests détectent une erreur de formule |
-| `tsc --noEmit` sur `apps/web` | Réussi, 0 erreur | — |
-| `pnpm --filter @pathly/web build` | Réussi ; `/dev/visualisation` statique 45,5 kB (148 kB First Load) ; `/` inchangé | Lint sauté par la configuration actuelle |
-| Page `/dev/visualisation` dans le navigateur | Rendu des 14 cas ; aucune erreur console ni d'hydratation ; HTML serveur avec `aria-label` complets et `noindex` | Navigateur intégré, desktop + 375 px |
-| Mode « sans mouvement » forcé | Aucune transformation appliquée ; en mode auto, animation en cours à 30 ms | Réglage système `prefers-reduced-motion` non émulé : repose sur `useReducedMotion` de framer-motion |
-| Largeur 375 px | Pas de défilement horizontal ; cascade passée sur une ligne pleine largeur | — |
-| Clavier | Boutons de la page de dev atteignables (tabIndex 0) | Pas de parcours clavier complet du dashboard (non monté) |
+| `node --experimental-strip-types --test apps/web/test/visualisation.test.ts` | Réussi | 20 tests exécutés, 20 réussis, 0 ignoré ; calculs et adaptateur, pas de rendu. Node 22.20 |
+| Erreurs volontaires : réserve non soustraite ; erreur API convertie en vide | Réussi | 2 échecs détectés dans chaque cas, puis 20/20 après restauration |
+| `pnpm --filter @pathly/web exec tsc --noEmit --incremental false` | Réussi | 0 erreur |
+| `pnpm --filter @pathly/web build` | Réussi | Build de production : `/dev/visualisation` statique, 46,3 kB (149 kB au premier chargement) ; lint sauté par la configuration |
+| `/dev/visualisation` dans le navigateur, desktop et 375 px | Réussi | 17 cas rendus ; aucune erreur console ni d’hydratation ; pas de défilement horizontal à 375 px |
+| Changement de données (sélecteur, clavier) | Réussi | 500 € → −100 € → « Indisponible » → erreur ; 14 000 € → −2 700 € → aucune donnée |
+| Rendu serveur | Réussi | HTTP 200, `aria-label` complets et `noindex` dans le HTML serveur |
+| Mode sans mouvement forcé | Réussi | Aucune transformation appliquée ; en mode auto, l’animation se lance |
+| Réglage système `prefers-reduced-motion` | Non exécuté | Non émulable dans le navigateur utilisé ; repose sur `useReducedMotion` de framer-motion |
+| Montage dashboard et données réelles | Non exécuté | Dépend de Loris, Victor et Ishak |
 
 ## 5. Limites et transmission
 
-- Limites : sans JavaScript, les barres animées restent à l'état initial (valeurs textuelles toujours visibles). Coût de framer-motion
-  à mesurer avec Clément une fois monté. Aucun FPS publié.
-- Actions attendues :
-  - Victor / Ishak : valider ou refuser le bloc `inputs` de `CashflowSummaryView`.
-  - Loris : confirmer le dossier `components/visualisation/` et réserver deux emplacements dans le dashboard.
-  - Ishak (constaté en installant) : `schema.prisma` ligne 180, `@default(PERSONAL)` absent de l'enum `LoanType` → `prisma generate` échoue.
-  - Arthur (constaté en installant) : `apps/api/tsconfig.tsbuildinfo` est suivi par git ; au redémarrage de `nest start`, `dist/` est
-    supprimé mais rien n'est réémis (« Cannot find module dist/main »).
-- Reproduction : `pnpm install --frozen-lockfile`, `pnpm --filter @pathly/web dev`, ouvrir `/dev/visualisation`.
+- Limite connue ou hypothèse : emplacement du dossier non encore confirmé par Loris ; bloc `inputs` en attente de validation ; sans JavaScript, les barres animées restent à l’état initial (valeurs écrites toujours visibles) ; pas de test de rendu des composants ; coût de framer-motion à mesurer avec Clément après montage ; aucun chiffre de FPS publié.
+- Action attendue d’un collègue, responsable et interface concernée : Loris — confirmer le dossier, réserver deux emplacements et réaliser le montage ; Victor et Ishak — accepter ou refuser `inputs` dans `CashflowSummaryView` ; Victor — fusion de la PR #2, puis import des types depuis `@pathly/shared-types`.
+- Étapes de démonstration ou de reproduction : `pnpm install --frozen-lockfile`, `pnpm --filter @pathly/web dev`, ouvrir `/dev/visualisation`, changer les données avec les sélecteurs, activer « Forcer sans mouvement ».
+- Facultatif, pour la soutenance : aucune capture jointe ; toutes les données affichées sont des fixtures fictives.
 
-## Relecture par l'auteur
+## Relecture par l’auteur
 
-- [ ] J'ai lu le diff et ce rapport ; ils décrivent le même résultat.
-- [ ] J'ai vérifié les résultats indiqués et signalé ce qui ne l'est pas.
-- [ ] Je peux retrouver le point d'entrée, expliquer l'exemple et montrer un cas d'erreur.
+- [ ] J’ai lu le diff et ce rapport ; ils décrivent le même résultat.
+- [ ] J’ai vérifié les résultats indiqués et signalé ce qui ne l’est pas.
+- [ ] Je peux retrouver le point d’entrée, expliquer l’exemple et montrer un cas d’erreur.
 
-Cette attestation et la génération du document ne remplacent pas la revue croisée ni les preuves d'exécution.
+Cette attestation et la génération du document ne remplacent pas la revue croisée ni les preuves d’exécution.

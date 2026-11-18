@@ -1,27 +1,19 @@
 # Visualisations financières — composants
 
-Responsable : Jeremy · Intégration dashboard : Loris · Statut S2 : **validé isolément** (fixtures), montage restant.
+Ticket : `S02-JEREMY-visualisation` · Responsable : Jeremy · Intégration dashboard : Loris · Statut S2 : **validé isolément**.
 
 Composants autonomes : aucun appel réseau ni Supabase. L'intégrateur fournit un état typé `VisualState<T>`.
-Page de développement isolée : `/dev/visualisation` (non indexée), avec tous les états, thème sombre et mode sans mouvement.
-
-## Utilisation
-
-```tsx
-import { FinancialHealth, NetWorthBreakdown } from '@/components/visualisation';
-
-<FinancialHealth state={{ status: 'ready', data: cashflowSummary }} tone="light" />
-<NetWorthBreakdown state={{ status: 'loading' }} />
-```
+Page de développement isolée : `/dev/visualisation` (non indexée), avec tous les états, un changement de données en direct,
+le thème sombre et le mode sans mouvement. Emplacement `components/visualisation/` **à confirmer avec Loris**.
 
 ## Props communes
 
-| Prop          | Type                                   | Défaut    | Rôle                                                                 |
-| ------------- | -------------------------------------- | --------- | -------------------------------------------------------------------- |
-| `state`       | `VisualState<T>`                       | requis    | `loading`, `empty` (aucune donnée), `error` (+ `message`) ou `ready` |
-| `tone`        | `'light' \| 'dark'`                    | `'light'` | Suit le mode clair/sombre du conteneur                               |
-| `motion`      | `'auto' \| 'reduced'`                  | `'auto'`  | `auto` respecte `prefers-reduced-motion` ; `reduced` force le statique |
-| `sourceLabel` | `string`                               | —         | Badge affiché, ex. « Données fictives » pour une fixture ou la démo  |
+| Prop          | Type                  | Défaut    | Rôle                                                                   |
+| ------------- | --------------------- | --------- | ---------------------------------------------------------------------- |
+| `state`       | `VisualState<T>`      | requis    | `loading`, `empty` (aucune donnée), `error` (+ `message`) ou `ready`   |
+| `tone`        | `'light' \| 'dark'`   | `'light'` | Suit le mode clair/sombre du conteneur                                 |
+| `motion`      | `'auto' \| 'reduced'` | `'auto'`  | `auto` respecte `prefers-reduced-motion` ; `reduced` force le statique |
+| `sourceLabel` | `string`              | —         | Badge affiché, ex. « Données fictives » pour une fixture ou la démo    |
 
 `empty` signifie « pas de donnée » ; ce n'est jamais converti en 0 €.
 
@@ -43,22 +35,43 @@ Compatible avec `CashflowSummaryDto` de `GET /api/v1/cashflow/summary` (Victor, 
 `status: 'AVAILABLE' | 'SHORTFALL' | 'INCOMPLETE'`, `currency: 'EUR'`, `incompleteReasons?`.
 Les types de statut et de raison sont recopiés localement tant que la PR #2 n'est pas fusionnée.
 
-Ajout **proposé, à confirmer avec Victor et Ishak** : bloc optionnel `inputs` (`availableBalance`, `remainingCommittedExpenses`,
-`savingsReserve`, chacun `number | null`) pour expliquer le calcul. Charges et réserve sont déjà des paramètres envoyés par le
-dashboard ; seul le solde disponible n'est pas renvoyé par l'API.
-
-- Avec `inputs` complets : cascade solde → − charges → − réserve → reste à dépenser. Un déficit reste négatif, à gauche d'un repère 0 €.
-- Sans `inputs` (réponse actuelle de l'API) : résultat seul. Statut INCOMPLETE : `incompleteReasons` traduites en libellés
-  (code inconnu affiché tel quel), montant « Indisponible ». Avec une entrée `null` dans `inputs` : même affichage.
+- Réponse du contrat actuel : résultat seul. Un déficit reste négatif ; INCOMPLETE affiche « Indisponible » et les
+  `incompleteReasons` traduites (code inconnu affiché tel quel).
 - Le libellé d'état reprend uniquement le statut reçu (pas de seuil « tendu » inventé).
-- Incohérences signalées : écart entre `safeToSpendPeriod` et le calcul des entrées, statut contradictoire avec le signe du montant.
+- Incohérences signalées : statut contradictoire avec le signe du montant, INCOMPLETE sans raison.
 
-## Calculs et arrondis
+**Proposition à valider avec Victor et Ishak** : bloc optionnel `inputs` (`availableBalance`, `remainingCommittedExpenses`,
+`savingsReserve`, chacun `number | null`). Charges et réserve sont déjà des paramètres envoyés par le dashboard ; seul le
+solde n'est pas renvoyé. Avec `inputs` complets, le composant affiche la cascade solde → − charges → − réserve → reste à
+dépenser, avec un repère 0 € si le résultat est négatif, et signale un écart entre `safeToSpendPeriod` et le calcul des entrées.
 
-`compute.ts` (fonctions pures) : euros → centimes entiers arrondis au centime le plus proche avant toute opération, retour en euros
-pour l'affichage uniquement. Tests : `pnpm --filter @pathly/web test` (runner natif Node ≥ 22.18, sans dépendance ajoutée).
+## Adaptateur `apiResponseToVisualState`
 
-## Montage dans le dashboard (avec Loris)
+Fonction pure : `ApiResponse<T>` (renvoyée par `ApiClient`) → `VisualState<T>`.
+`success: true` + données → `ready` ; `success: true` sans données → `empty` ; `success: false` → `error` avec `error.message`.
 
-À faire dans une PR de raccordement ciblée : réserver deux emplacements dans le dashboard, passer `tone` selon `isDarkMode`,
-et alimenter `state` depuis la source de données retenue (fixture identifiée tant que l'API n'est pas raccordée).
+## Calculs, arrondis et tests
+
+`compute.ts` (fonctions pures) : euros → centimes entiers arrondis au centime le plus proche avant toute opération, retour en
+euros pour l'affichage uniquement. Tests (runner natif de Node, sans dépendance), depuis la racine du dépôt :
+
+```bash
+node --experimental-strip-types --test apps/web/test/visualisation.test.ts
+```
+
+## Montage dans le dashboard (préparé, à réaliser avec Loris)
+
+Non appliqué : `apps/web/src/app/page.tsx` relève de Loris, qui réserve les emplacements. Changement ciblé proposé, avec les
+fixtures identifiées tant que les sources de données ne sont pas raccordées :
+
+```tsx
+import { FinancialHealth, NetWorthBreakdown } from '@/components/visualisation';
+import { FIXTURE_LABEL, healthResultOnly, netWorthHealthy } from '@/components/visualisation/fixtures';
+
+<FinancialHealth state={healthResultOnly} tone={isDarkMode ? 'dark' : 'light'} sourceLabel={FIXTURE_LABEL} />
+<NetWorthBreakdown state={netWorthHealthy} tone={isDarkMode ? 'dark' : 'light'} sourceLabel={FIXTURE_LABEL} />
+```
+
+Les montants de ces fixtures diffèrent des données de démonstration actuelles du dashboard (`lib/mock-data.ts`) : le choix
+de la source affichée revient à Loris, qui raccorde les sources de données. Raccordement réel ensuite : `state={apiResponseToVisualState(réponse)}` à partir de `GET /cashflow/summary` (Victor) et de la
+synthèse patrimoniale (Ishak), avec `state={{ status: 'loading' }}` pendant la requête.
